@@ -457,17 +457,17 @@ if role == "admin":
         st.markdown("#### 📜 Historial")
         hist = df_sql("""
                       SELECT fecha,
-                             peso_kg     AS peso-KG,
+                             peso_kg     AS peso_KG,
                              grasa_pct   AS grasa,
                              musculo_pct AS musculo,
                              brazo_rest,
                              brazo_flex,
                              pecho_rest,
                              pecho_flex,
-                             cintura_cm  AS cintura-CM,
-                             cadera_cm   AS cadera,
-                             pierna_cm   AS pierna,
-                             pantorrilla_cm AS pantorrilla
+                             cintura_cm  AS cintura_CM,
+                             cadera_cm   AS cadera_CM,
+                             pierna_cm   AS pierna_CM,
+                             pantorrilla_cm AS pantorrilla_CM
                       FROM mediciones
                       WHERE paciente_id = %s
                       ORDER BY fecha DESC
