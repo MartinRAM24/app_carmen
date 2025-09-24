@@ -210,16 +210,48 @@ def make_anyone_reader(file_id: str):
 
 def upload_pdf_to_folder(file_bytes: bytes, filename: str, folder_id: str) -> dict:
     drive = get_drive()
-    media = MediaIoBaseUpload(io.BytesIO(file_bytes), mimetype="application/pdf", resumable=False)
-    meta = {"name": filename, "parents": [folder_id]}
-    f = drive.files().create(
-        body=meta,
-        media_body=media,
-        fields="id,webViewLink",
-        supportsAllDrives=True,
-    ).execute()
-    make_anyone_reader(f["id"])
+
+    # 0) Validaciones básicas
+    if not folder_id or not folder_id.strip():
+        raise RuntimeError("upload_pdf_to_folder: folder_id vacío/None.")
+    if not file_bytes:
+        raise RuntimeError("upload_pdf_to_folder: archivo vacío.")
+
+    # 1) Verifica que la carpeta exista y que la SA tenga acceso
+    try:
+        parent_info = drive.files().get(
+            fileId=folder_id,
+            fields="id,name,mimeType,parents,driveId",
+            supportsAllDrives=True
+        ).execute()
+    except HttpError as e:
+        st.error(f"[Drive] No se pudo acceder a la carpeta destino ({folder_id}). "
+                 f"¿Compartiste la raíz con la SA? Detalle: {e}")
+        raise
+
+    # 2) Sube el PDF
+    try:
+        media = MediaIoBaseUpload(io.BytesIO(file_bytes), mimetype="application/pdf", resumable=False)
+        meta = {"name": filename, "parents": [folder_id]}
+        f = drive.files().create(
+            body=meta,
+            media_body=media,
+            fields="id,webViewLink",
+            supportsAllDrives=True,
+        ).execute()
+    except HttpError as e:
+        # Muestra causa exacta en UI (insufficientPermissions, fileNotFound, etc.)
+        st.error(f"[Drive] Error al crear el archivo en '{parent_info.get('name','?')}' ({folder_id}). Detalle: {e}")
+        raise
+
+    # 3) (Opcional) Hazlo público si así lo quieres; si falla, no detengas el flujo
+    try:
+        make_anyone_reader(f["id"])
+    except HttpError as e:
+        st.info(f"[Drive] PDF subido, pero no pude hacerlo público: {e}")
+
     return f
+
 
 def upload_image_to_folder(file_bytes: bytes, filename: str, folder_id: str, mime: str) -> dict:
     drive = get_drive()
