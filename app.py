@@ -1,6 +1,6 @@
 # app.py (Neon / PostgreSQL)
 import streamlit as st
-import os, uuid, hashlib, io, traceback
+import os, uuid, hashlib, traceback
 import pandas as pd
 from datetime import date
 import psycopg
@@ -17,7 +17,6 @@ os.makedirs(MEDIA_DIR, exist_ok=True)
 # DB helpers (Neon / Postgres con psycopg)
 # =========================
 # --- DB helpers (Postgres con psycopg) ---
-
 
 NEON_URL = st.secrets.get("NEON_DATABASE_URL") or os.getenv("NEON_DATABASE_URL")
 
@@ -172,12 +171,12 @@ def get_or_create_token(pid: int):
     if d.empty: return None
     tok = d["token"].iloc[0]
     if not tok:
-        tok = uuid.uuid4().hex
+        tok = uuid.uuid4().hex[:8]
         exec_sql("UPDATE pacientes SET token = %s WHERE id = %s", (tok, pid))
     return tok
 
 def buscar_pacientes(filtro=""):
-    return df_sql("SELECT id, nombre FROM pacientes WHERE nombre LIKE ? ORDER BY nombre",
+    return df_sql("SELECT id, nombre FROM pacientes WHERE nombre LIKE %s ORDER BY nombre",
                   (f"%{filtro}%",))
 
 def query_mediciones(pid):
