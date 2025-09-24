@@ -1,46 +1,150 @@
+# app.py — dual: SQLite (local) / Postgres (Neon en la nube)
+import os
 import sqlite3
 from pathlib import Path
 from datetime import date
+
 import pandas as pd
 import streamlit as st
 
-DB = Path("data/patients.db")
-
-def conn():
-    return sqlite3.connect(DB, check_same_thread=False)
-
-@st.cache_data(ttl=30)
-def buscar_pacientes(q: str):
-    con = conn()
-    like = f"%{q.strip()}%" if q else "%"
-    df = pd.read_sql_query("""
-        SELECT id, nombre, edad, telefono, notas, fotos_URL
-        FROM pacientes
-        WHERE nombre LIKE ?
-        ORDER BY nombre
-    """, con, params=(like,))
-    con.close()
-    return df
-
-def exec_sql(sql, params=()):
-    con = conn()
-    cur = con.cursor()
-    cur.execute(sql, params)
-    con.commit()
-    con.close()
-    st.cache_data.clear()
-
-def query_df(sql, params=()):
-    con = conn()
-    df = pd.read_sql_query(sql, con, params=params)
-    con.close()
-    return df
-
+# ------------------------------
+# Config de página
+# ------------------------------
 st.set_page_config(page_title="Pacientes de Carmen", page_icon="🩺", layout="wide")
 st.title("🩺 Pacientes de Carmen")
 st.caption("Busca pacientes, registra mediciones por cita y abre la carpeta de fotos en Google Drive.")
 
-# --- BUSCADOR + NUEVO PACIENTE ---
+# ------------------------------
+# Detección de base (dual)
+# ------------------------------
+DB_URL = st.secrets.get("DATABASE_URL", os.getenv("DATABASE_URL", ""))  # si existe → Postgres
+
+def get_conn():
+    """Devuelve conexión a Postgres (si hay DATABASE_URL) o a SQLite local."""
+    if DB_URL:
+        import psycopg  # requiere psycopg[binary] en requirements.txt
+        return psycopg.connect(DB_URL, autocommit=True)
+    else:
+        db_path = Path("data/patients.db")
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        return sqlite3.connect(db_path, check_same_thread=False)
+
+def ensure_schema():
+    """Crea tablas si no existen (en local o nube) con TUS columnas."""
+    con = get_conn()
+    cur = con.cursor()
+    if DB_URL:  # Postgres
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS pacientes (
+          id SERIAL PRIMARY KEY,
+          nombre     TEXT UNIQUE NOT NULL,
+          edad       INT,
+          telefono   TEXT,
+          notas      TEXT,
+          fotos_URL  TEXT
+        );""")
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS mediciones (
+          id SERIAL PRIMARY KEY,
+          paciente_id       INT NOT NULL REFERENCES pacientes(id) ON DELETE CASCADE,
+          fecha             DATE NOT NULL,
+          peso              REAL,
+          grasa             REAL,
+          musculo           REAL,
+          brazo_rest        REAL,
+          brazo_flex        REAL,
+          pecho_rest        REAL,
+          pecho_flex        REAL,
+          cintura           REAL,
+          cadera            REAL,
+          pierna_flex       REAL,
+          pantorrilla_flex  REAL,
+          notas             TEXT,
+          UNIQUE(paciente_id, fecha)
+        );""")
+    else:       # SQLite
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS pacientes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          nombre     TEXT UNIQUE NOT NULL,
+          edad       INTEGER,
+          telefono   TEXT,
+          notas      TEXT,
+          fotos_URL  TEXT
+        );""")
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS mediciones (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          paciente_id       INTEGER NOT NULL,
+          fecha             TEXT NOT NULL,
+          peso              REAL,
+          grasa             REAL,
+          musculo           REAL,
+          brazo_rest        REAL,
+          brazo_flex        REAL,
+          pecho_rest        REAL,
+          pecho_flex        REAL,
+          cintura           REAL,
+          cadera            REAL,
+          pierna_flex       REAL,
+          pantorrilla_flex  REAL,
+          notas             TEXT,
+          UNIQUE(paciente_id, fecha),
+          FOREIGN KEY (paciente_id) REFERENCES pacientes(id) ON DELETE CASCADE
+        );""")
+    con.close()
+
+ensure_schema()
+st.caption(f"🔌 Base de datos: {'Postgres (nube)' if DB_URL else 'SQLite (local)'}")
+
+# ------------------------------
+# Utilidades de lectura/escritura
+# ------------------------------
+def query_df(sql, params=()):
+    con = get_conn()
+    try:
+        if DB_URL:
+            with con.cursor() as cur:
+                cur.execute(sql, params)
+                cols = [d[0] for d in cur.description]
+                rows = cur.fetchall()
+            return pd.DataFrame(rows, columns=cols)
+        else:
+            return pd.read_sql_query(sql, con, params=params)
+    finally:
+        con.close()
+
+def exec_sql(sql, params=()):
+    con = get_conn()
+    try:
+        if DB_URL:
+            with con.cursor() as cur:
+                cur.execute(sql, params)
+        else:
+            cur = con.cursor()
+            cur.execute(sql, params)
+            con.commit()
+    finally:
+        con.close()
+    st.cache_data.clear()  # invalida caches después de escribir
+
+# ------------------------------
+# Funciones cacheadas
+# ------------------------------
+@st.cache_data(ttl=30)
+def buscar_pacientes(q: str):
+    like = f"%{q.strip()}%" if q else "%"
+    # El placeholder es el mismo (?) para SQLite y Postgres en psycopg
+    return query_df("""
+        SELECT id, nombre, edad, telefono, notas, fotos_URL
+        FROM pacientes
+        WHERE nombre LIKE ?
+        ORDER BY nombre
+    """, (like,))
+
+# ------------------------------
+# UI: Buscador + Nuevo paciente
+# ------------------------------
 col1, col2 = st.columns([2, 1])
 
 with col1:
@@ -75,7 +179,7 @@ with col2:
             exec_sql("""
               INSERT INTO pacientes(nombre, edad, telefono, notas, fotos_URL)
               VALUES (?, ?, ?, ?, ?)
-              ON CONFLICT(nombre) DO UPDATE SET
+              ON CONFLICT (nombre) DO UPDATE SET
                 edad=excluded.edad,
                 telefono=excluded.telefono,
                 notas=excluded.notas,
@@ -85,7 +189,9 @@ with col2:
 
 st.divider()
 
-# --- REGISTRAR MEDICIÓN ---
+# ------------------------------
+# UI: Registrar medición
+# ------------------------------
 st.subheader("📝 Registrar medición (cita)")
 todos = buscar_pacientes("")  # todos
 if todos.empty:
@@ -115,6 +221,7 @@ else:
         pantorrilla_flex = h4.number_input("Pantorrilla (fuerza)", 0.0, step=0.1)
 
         notas = st.text_area("Notas de la cita", height=80)
+
         save = st.form_submit_button("Guardar medición")
         if save:
             exec_sql("""
@@ -125,7 +232,7 @@ else:
               VALUES (?, ?, ?, ?, ?,
                       ?, ?, ?, ?,
                       ?, ?, ?, ?, ?)
-              ON CONFLICT(paciente_id, fecha) DO UPDATE SET
+              ON CONFLICT (paciente_id, fecha) DO UPDATE SET
                 peso=excluded.peso,
                 grasa=excluded.grasa,
                 musculo=excluded.musculo,
@@ -162,4 +269,3 @@ else:
         k3.metric("% Músculo", latest["musculo"] if pd.notna(latest["musculo"]) else "—")
         k4.metric("Cintura (cm)", latest["cintura"] if pd.notna(latest["cintura"]) else "—")
         st.dataframe(hist, use_container_width=True)
-
