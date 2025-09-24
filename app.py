@@ -344,9 +344,12 @@ if role == "admin":
                 _confirm_delete_dialog()
 
         with c2:
-            if st.button("🔗 Copiar link del portal del paciente", use_container_width=True):
+            if st.button("📋 Copiar token del paciente", use_container_width=True):
                 tok = get_or_create_token(pid)
-                st.code(f"http://localhost:8501/?token={tok}", language="text")
+                # Muestra solo el token. El recuadro de `st.code` ya trae botón de copiar.
+                st.code(tok, language="")
+                st.caption("Toca el icono de copiar del recuadro para poner el token en el portapapeles.")
+
     else:
         st.caption("Escribe arriba y pulsa **Buscar** para ver resultados.")
         # si no hay resultados, evita usar pid más abajo
