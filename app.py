@@ -457,7 +457,7 @@ if role == "admin":
         st.markdown("#### 📜 Historial")
         hist = df_sql("""
                       SELECT fecha,
-                             peso_kg     AS peso,
+                             peso_kg     AS f"peso kg",
                              grasa_pct   AS grasa,
                              musculo_pct AS musculo,
                              brazo_rest,
