@@ -372,7 +372,7 @@ if role == "admin":
                            (notas_med.strip() or None), pid, f.strip()))
             st.success("Medición guardada ✅"); st.rerun()
 
-        citas_m = df_sql("SELECT fecha FROM mediciones WHERE paciente_id=? ORDER BY fecha DESC", (pid,))
+        citas_m = df_sql("SELECT fecha FROM mediciones WHERE paciente_id=%s ORDER BY fecha DESC", (pid,))
         if citas_m.empty:
             st.info("Sin mediciones registradas todavía.")
         else:
