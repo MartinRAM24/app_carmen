@@ -23,17 +23,16 @@ NEON_URL = st.secrets.get("NEON_DATABASE_URL") or os.getenv("NEON_DATABASE_URL")
 @st.cache_resource
 def conn():
     if not NEON_URL:
-        st.error("Falta NEON_DATABASE_URL en secrets o env"); st.stop()
+        st.stop()  # fuerza a configurar la URL
+    # autocommit True para no olvidar commit
     return psycopg.connect(NEON_URL, autocommit=True)
 
-def exec_sql(sql: str, params: tuple = ()):
+def exec_sql(q_ps: str, p: tuple = ()):
     with conn().cursor() as cur:
-        cur.execute(sql, params)
+        cur.execute(q_ps, p)
 
-def df_sql(sql: str, params: tuple = ()):
-    with conn() as c:
-        return pd.read_sql_query(sql, c, params=params)
-
+def df_sql(q_ps: str, p: tuple = ()):
+    return pd.read_sql_query(q_ps, conn(), params=p)
 
 
 
@@ -179,11 +178,8 @@ def get_or_create_token(pid: int):
     return tok
 
 def buscar_pacientes(filtro=""):
-    return df_sql(
-        "SELECT id, nombre FROM pacientes WHERE nombre ILIKE %s ORDER BY nombre",
-        (f"%{filtro}%",)
-    )
-
+    return df_sql("SELECT id, nombre FROM pacientes WHERE nombre LIKE %s ORDER BY nombre",
+                  (f"%{filtro}%",))
 
 def query_mediciones(pid):
     return df_sql("""
@@ -215,16 +211,13 @@ def save_image(file, pid: int, fecha_str: str):
     return path
 
 def to_drive_preview(url: str) -> str:
-    if not url:
-        return ""
-    u = url.strip().split("?")[0]   # ← corregido
+    if not url: return ""
+    u = url.strip().split("%s")[0]
     if "drive.google.com" in u:
-        if "/view" in u:
-            u = u.replace("/view", "/preview")
+        if "/view" in u: u = u.replace("/view", "/preview")
         elif not u.endswith("/preview"):
             u = u[:-1] + "preview" if u.endswith("/") else u + "/preview"
     return u
-
 
 # =========================
 # UI (tu misma lógica)
