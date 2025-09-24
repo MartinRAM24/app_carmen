@@ -120,6 +120,27 @@ def ensure_mediciones_columns():
 setup_db()
 ensure_mediciones_columns()
 
+def delete_paciente(pid: int):
+    # 1) Borrar fotos físicas del disco (si existen)
+    fotos = query_df("SELECT filepath FROM fotos WHERE paciente_id = %s", (pid,))
+    for _, row in fotos.iterrows():
+        path = row["filepath"]
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception as e:
+            st.warning(f"No se pudo borrar {path}: {e}")
+
+    # 2) Borrar registros dependientes
+    exec_sql("DELETE FROM fotos WHERE paciente_id = %s", (pid,))
+    exec_sql("DELETE FROM mediciones WHERE paciente_id = %s", (pid,))
+
+    # 3) Borrar paciente
+    exec_sql("DELETE FROM pacientes WHERE id = %s", (pid,))
+
+    st.success("Paciente eliminado ✅")
+
+
 # =========================
 # Helpers de dominio
 # =========================
@@ -261,7 +282,7 @@ if role == "admin":
                 dup = df_sql("SELECT id FROM pacientes WHERE nombre = %s", (nombre.strip(),))
                 if not dup.empty:
                     st.warning("Ya existe un paciente con ese nombre."); return
-                tok = uuid.uuid4().hex
+                tok = uuid.uuid4().hex[:8]
                 exec_sql("""INSERT INTO pacientes(nombre, fecha_nac, telefono, correo, notas, token)
                             VALUES(%s,%s,%s,%s,%s,%s)""",
                          (nombre.strip(), str(fnac), tel.strip(), mail.strip(), notas.strip(), tok))
@@ -277,6 +298,18 @@ if role == "admin":
             st.stop()
         pac_sel = st.selectbox("Paciente", lista["nombre"].tolist(), key="adm_pac")
         pid = int(lista.loc[lista["nombre"] == pac_sel, "id"].iloc[0])
+        
+    with st.expander("⚠️ Eliminar paciente"):
+        st.warning("Esta acción borrará al paciente y todos sus datos (mediciones y fotos).")
+        col_del1, col_del2 = st.columns(2)
+        with col_del1:
+            if st.button("❌ Cancelar", key=f"cancel_del_{pid}"):
+                st.info("Cancelado.")
+        with col_del2:
+            if st.button("🗑️ Sí, eliminar paciente", key=f"confirm_del_{pid}"):
+                delete_paciente(pid)
+                st.rerun()
+
     with c2:
         if st.button("🔗 Copiar link del portal del paciente"):
             tok = get_or_create_token(pid)
