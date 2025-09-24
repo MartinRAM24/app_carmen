@@ -113,26 +113,26 @@ def get_drive():
 ROOT_FOLDER_ID = st.secrets.get("DRIVE_ROOT_FOLDER_ID")  # ID de la carpeta en tus secrets
 
 
-def debug_root_access():
-    st.write("SA:", st.secrets["gcp_service_account"]["client_email"])
-    st.write("ROOT_FOLDER_ID:", st.secrets.get("DRIVE_ROOT_FOLDER_ID"))
-    drive = get_drive()
-    rid = st.secrets.get("DRIVE_ROOT_FOLDER_ID")
-    if not rid:
-        st.error("Falta DRIVE_ROOT_FOLDER_ID en Secrets.")
-        return
-    try:
-        info = drive.files().get(
-            fileId=rid,
-            fields="id,name,parents,driveId",
-            supportsAllDrives=True
-        ).execute()
-        st.success(f"OK acceso a raíz: {info['name']} ({info['id']})")
-    except HttpError as e:
-        st.error(f"Sin acceso a la raíz. Comparte la carpeta con la SA como 'Content manager'. Error: {e}")
-        st.stop()
+#def debug_root_access():
+#    st.write("SA:", st.secrets["gcp_service_account"]["client_email"])
+#    st.write("ROOT_FOLDER_ID:", st.secrets.get("DRIVE_ROOT_FOLDER_ID"))
+#    drive = get_drive()
+#    rid = st.secrets.get("DRIVE_ROOT_FOLDER_ID")
+#    if not rid:
+#        st.error("Falta DRIVE_ROOT_FOLDER_ID en Secrets.")
+#        return
+#    try:
+#        info = drive.files().get(
+#            fileId=rid,
+#            fields="id,name,parents,driveId",
+#            supportsAllDrives=True
+#        ).execute()
+#        st.success(f"OK acceso a raíz: {info['name']} ({info['id']})")
+#    except HttpError as e:
+#        st.error(f"Sin acceso a la raíz. Comparte la carpeta con la SA como 'Content manager'. Error: {e}")
+#        st.stop()
 
-debug_root_access()
+#debug_root_access()
 
 def ensure_mediciones_columns():
     needed = [
