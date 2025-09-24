@@ -124,7 +124,7 @@ ensure_mediciones_columns()
 # Helpers de dominio
 # =========================
 def delete_foto(photo_id: int):
-    fila = df_sql("SELECT filepath FROM fotos WHERE id = ?", (photo_id,))
+    fila = df_sql("SELECT filepath FROM fotos WHERE id = %s", (photo_id,))
     if fila.empty:
         st.warning("No se encontró la foto en la base.")
         return
@@ -135,7 +135,7 @@ def delete_foto(photo_id: int):
     except Exception as e:
         st.warning(f"No se pudo borrar el archivo físico: {e}")
         st.text(traceback.format_exc())
-    exec_sql("DELETE FROM fotos WHERE id = ?", (photo_id,))
+    exec_sql("DELETE FROM fotos WHERE id = %s", (photo_id,))
 
 def sha256(x: str) -> str:
     return hashlib.sha256(x.encode()).hexdigest()
@@ -147,16 +147,16 @@ def is_admin_ok(user, password):
     return (user == ADMIN_USER) and (sha256(password) == ADMIN_PASSWORD_HASH)
 
 def get_paciente_by_token(tok: str):
-    d = df_sql("SELECT * FROM pacientes WHERE token = ?", (tok,))
+    d = df_sql("SELECT * FROM pacientes WHERE token = %s", (tok,))
     return None if d.empty else d.iloc[0]
 
 def get_or_create_token(pid: int):
-    d = df_sql("SELECT token FROM pacientes WHERE id = ?", (pid,))
+    d = df_sql("SELECT token FROM pacientes WHERE id = %s", (pid,))
     if d.empty: return None
     tok = d["token"].iloc[0]
     if not tok:
         tok = uuid.uuid4().hex
-        exec_sql("UPDATE pacientes SET token = ? WHERE id = ?", (tok, pid))
+        exec_sql("UPDATE pacientes SET token = %s WHERE id = %s", (tok, pid))
     return tok
 
 def buscar_pacientes(filtro=""):
@@ -186,13 +186,13 @@ def save_image(file, pid: int, fecha_str: str):
     path = os.path.join(MEDIA_DIR, filename)
     with open(path, "wb") as f:
         f.write(file.read())
-    exec_sql("INSERT INTO fotos (paciente_id, fecha, filepath) VALUES (?, ?, ?)",
+    exec_sql("INSERT INTO fotos (paciente_id, fecha, filepath) VALUES (%s, %s, %s)",
              (pid, fecha_str, path))
     return path
 
 def to_drive_preview(url: str) -> str:
     if not url: return ""
-    u = url.strip().split("?")[0]
+    u = url.strip().split("%s")[0]
     if "drive.google.com" in u:
         if "/view" in u: u = u.replace("/view", "/preview")
         elif not u.endswith("/preview"):
@@ -213,7 +213,7 @@ with st.sidebar:
         a_pass = st.text_input("Contraseña", type="password")
         admin_login = st.button("Entrar como Admin")
     with tabs[1]:
-        p_token = st.text_input("Token de acceso (o usa el link con ?token=...)", value=token_from_url or "")
+        p_token = st.text_input("Token de acceso (o usa el link con %stoken=...)", value=token_from_url or "")
         patient_login = st.button("Entrar como Paciente")
 
 if "role" not in st.session_state:
@@ -258,12 +258,12 @@ if role == "admin":
             if enviar:
                 if not nombre.strip():
                     st.error("El nombre es obligatorio."); return
-                dup = df_sql("SELECT id FROM pacientes WHERE nombre = ?", (nombre.strip(),))
+                dup = df_sql("SELECT id FROM pacientes WHERE nombre = %s", (nombre.strip(),))
                 if not dup.empty:
                     st.warning("Ya existe un paciente con ese nombre."); return
                 tok = uuid.uuid4().hex
                 exec_sql("""INSERT INTO pacientes(nombre, fecha_nac, telefono, correo, notas, token)
-                            VALUES(?,?,?,?,?,?)""",
+                            VALUES(%s,%s,%s,%s,%s,%s)""",
                          (nombre.strip(), str(fnac), tel.strip(), mail.strip(), notas.strip(), tok))
                 st.success("Paciente creado ✅"); st.rerun()
         nuevo_paciente()
@@ -312,20 +312,20 @@ if role == "admin":
             def nz(x): return None if x in (0, 0.0) else x
             exec_sql("""
                      UPDATE mediciones
-                     SET peso_kg=?,
-                         grasa_pct=?,
-                         musculo_pct=?,
-                         brazo_rest=?,
-                         brazo_flex=?,
-                         pecho_rest=?,
-                         pecho_flex=?,
-                         cintura_cm=?,
-                         cadera_cm=?,
-                         pierna_cm=?,
-                         pantorrilla_cm=?,
-                         notas=?
-                     WHERE paciente_id = ?
-                       AND fecha = ?
+                     SET peso_kg=%s,
+                         grasa_pct=%s,
+                         musculo_pct=%s,
+                         brazo_rest=%s,
+                         brazo_flex=%s,
+                         pecho_rest=%s,
+                         pecho_flex=%s,
+                         cintura_cm=%s,
+                         cadera_cm=%s,
+                         pierna_cm=%s,
+                         pantorrilla_cm=%s,
+                         notas=%s
+                     WHERE paciente_id = %s
+                       AND fecha = %s
                      """, (nz(peso_kg), nz(grasa), nz(musc),
                            nz(brazo_r), nz(brazo_f),
                            nz(pecho_r), nz(pecho_f),
@@ -368,20 +368,20 @@ if role == "admin":
                 if st.button("💾 Guardar cambios de medidas"):
                     exec_sql("""
                              UPDATE mediciones
-                             SET peso_kg=?,
-                                 grasa_pct=?,
-                                 musculo_pct=?,
-                                 brazo_rest=?,
-                                 brazo_flex=?,
-                                 pecho_rest=?,
-                                 pecho_flex=?,
-                                 cintura_cm=?,
-                                 cadera_cm=?,
-                                 pierna_cm=?,
-                                 pantorrilla_cm=?,
-                                 notas=?
-                             WHERE paciente_id = ?
-                               AND fecha = ?
+                             SET peso_kg=%s,
+                                 grasa_pct=%s,
+                                 musculo_pct=%s,
+                                 brazo_rest=%s,
+                                 brazo_flex=%s,
+                                 pecho_rest=%s,
+                                 pecho_flex=%s,
+                                 cintura_cm=%s,
+                                 cadera_cm=%s,
+                                 pierna_cm=%s,
+                                 pantorrilla_cm=%s,
+                                 notas=%s
+                             WHERE paciente_id = %s
+                               AND fecha = %s
                              """, (new_vals["peso_kg"] or None, new_vals["grasa_pct"] or None,
                                    new_vals["musculo_pct"] or None,
                                    new_vals["brazo_rest"] or None, new_vals["brazo_flex"] or None,
@@ -406,8 +406,8 @@ if role == "admin":
                                  pierna_cm=NULL,
                                  pantorrilla_cm=NULL,
                                  notas=NULL
-                             WHERE paciente_id = ?
-                               AND fecha = ?
+                             WHERE paciente_id = %s
+                               AND fecha = %s
                              """, (pid, fecha_sel_m))
                     st.success("Mediciones vaciadas ✅"); st.rerun()
 
@@ -426,7 +426,7 @@ if role == "admin":
                              pierna_cm   AS pierna,
                              pantorrilla_cm AS pantorrilla
                       FROM mediciones
-                      WHERE paciente_id = ?
+                      WHERE paciente_id = %s
                       ORDER BY fecha DESC
                       """, (pid,))
         if hist.empty:
@@ -436,7 +436,7 @@ if role == "admin":
 
     # --- Perfil ---
     with tab_info:
-        datos = df_sql("SELECT * FROM pacientes WHERE id = ?", (pid,))
+        datos = df_sql("SELECT * FROM pacientes WHERE id = %s", (pid,))
         row = datos.iloc[0]
         with st.form("form_edit_paciente"):
             nombre = st.text_input("Nombre", row["nombre"])
@@ -447,8 +447,8 @@ if role == "admin":
             guardar = st.form_submit_button("Guardar cambios")
         if guardar:
             exec_sql("""UPDATE pacientes
-                        SET nombre=?, fecha_nac=?, telefono=?, correo=?, notas=?
-                        WHERE id=?""",
+                        SET nombre=%s, fecha_nac=%s, telefono=%s, correo=%s, notas=%s
+                        WHERE id=%s""",
                      (nombre.strip(), fnac.strip(), tel.strip(), mail.strip(), notas.strip(), pid))
             st.success("Perfil actualizado ✅"); st.rerun()
 
@@ -502,14 +502,14 @@ if role == "admin":
             a1, a2, a3 = st.columns([1,1,2])
             with a1:
                 if st.button("💾 Guardar cambios"):
-                    exec_sql("""UPDATE mediciones SET rutina_pdf=?, plan_pdf=?
-                                WHERE paciente_id=? AND fecha=?""",
+                    exec_sql("""UPDATE mediciones SET rutina_pdf=%s, plan_pdf=%s
+                                WHERE paciente_id=%s AND fecha=%s""",
                              (n_r.strip() or None, n_p.strip() or None, pid, fecha_sel))
                     st.success("PDFs actualizados ✅"); st.rerun()
             with a2:
                 if st.button("🧹 Vaciar ambos"):
                     exec_sql("""UPDATE mediciones SET rutina_pdf=NULL, plan_pdf=NULL
-                                WHERE paciente_id=? AND fecha=?""", (pid, fecha_sel))
+                                WHERE paciente_id=%s AND fecha=%s""", (pid, fecha_sel))
                     st.success("PDFs vaciados ✅"); st.rerun()
 
     # --- Fotos ---
@@ -529,7 +529,7 @@ if role == "admin":
                         save_image(f, pid, fecha_f.strip())
                     st.success("Fotos subidas ✅"); st.rerun()
 
-        gal = df_sql("SELECT id, fecha, filepath FROM fotos WHERE paciente_id=? ORDER BY fecha DESC", (pid,))
+        gal = df_sql("SELECT id, fecha, filepath FROM fotos WHERE paciente_id=%s ORDER BY fecha DESC", (pid,))
         if gal.empty:
             st.info("Sin fotos aún.")
         else:
@@ -619,7 +619,7 @@ elif role == "paciente":
                             pantorrilla_cm AS pantorrilla,
                             notas
                      FROM mediciones
-                     WHERE paciente_id = ?
+                     WHERE paciente_id = %s
                      ORDER BY fecha DESC
                      """, (int(pac["id"]),))
     if hist_ro.empty:
@@ -628,7 +628,7 @@ elif role == "paciente":
         st.dataframe(hist_ro, use_container_width=True, hide_index=True)
 
     st.markdown("### 🖼️ Tus fotos")
-    gal = df_sql("SELECT fecha, filepath FROM fotos WHERE paciente_id=? ORDER BY fecha DESC", (int(pac["id"]),))
+    gal = df_sql("SELECT fecha, filepath FROM fotos WHERE paciente_id=%s ORDER BY fecha DESC", (int(pac["id"]),))
     if gal.empty:
         st.info("Aún no hay fotos registradas.")
     else:
