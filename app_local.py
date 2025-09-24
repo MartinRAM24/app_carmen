@@ -1,106 +1,47 @@
-# app.py — Nube: Postgres (Neon) + Streamlit Cloud
-import os
+import sqlite3
+from pathlib import Path
 from datetime import date
+
 import pandas as pd
 import streamlit as st
+
+DB = Path("data/patients.db")
+
+def conn():
+    return sqlite3.connect(DB, check_same_thread=False)
+
+@st.cache_data(ttl=30)
+def buscar_pacientes(q: str):
+    con = conn()
+    like = f"%{q.strip()}%" if q else "%"
+    df = pd.read_sql_query("""
+        SELECT id, nombre, edad, telefono, notas, fotos_URL
+        FROM pacientes
+        WHERE nombre LIKE ?
+        ORDER BY nombre
+    """, con, params=(like,))
+    con.close()
+    return df
+
+def exec_sql(sql, params=()):
+    con = conn()
+    cur = con.cursor()
+    cur.execute(sql, params)
+    con.commit()
+    con.close()
+    st.cache_data.clear()
+
+def query_df(sql, params=()):
+    con = conn()
+    df = pd.read_sql_query(sql, con, params=params)
+    con.close()
+    return df
 
 st.set_page_config(page_title="Pacientes de Carmen", page_icon="🩺", layout="wide")
 st.title("🩺 Pacientes de Carmen")
 st.caption("Busca pacientes, registra mediciones por cita y abre la carpeta de fotos en Google Drive.")
 
-# ------------------------------
-# Conexión a Postgres (Neon)
-# ------------------------------
-DB_URL = st.secrets.get("DATABASE_URL", os.getenv("DATABASE_URL", ""))  # debe estar en Secrets
-if not DB_URL:
-    st.error("No se encontró DATABASE_URL en Secrets. Configúralo en Streamlit Cloud → Settings → Secrets.")
-    st.stop()
-
-import psycopg  # requiere psycopg[binary] en requirements.txt
-
-def get_conn():
-    # autocommit=True para no preocuparnos por commit manual en inserts/updates
-    return psycopg.connect(DB_URL, autocommit=True)
-
-# ------------------------------
-# Crear tablas si no existen (Postgres)
-# ------------------------------
-def ensure_schema():
-    con = get_conn()
-    with con.cursor() as cur:
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS pacientes (
-          id          SERIAL PRIMARY KEY,
-          nombre      TEXT UNIQUE NOT NULL,
-          edad        INT,
-          telefono    TEXT,
-          notas       TEXT,
-          fotos_URL   TEXT
-        );""")
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS mediciones (
-          id                 SERIAL PRIMARY KEY,
-          paciente_id        INT NOT NULL REFERENCES pacientes(id) ON DELETE CASCADE,
-          fecha              DATE NOT NULL,
-          peso               REAL,
-          grasa              REAL,
-          musculo            REAL,
-          brazo_rest         REAL,
-          brazo_flex         REAL,
-          pecho_rest         REAL,
-          pecho_flex         REAL,
-          cintura            REAL,
-          cadera             REAL,
-          pierna_flex        REAL,
-          pantorrilla_flex   REAL,
-          notas              TEXT,
-          UNIQUE (paciente_id, fecha)
-        );""")
-    con.close()
-
-ensure_schema()
-st.caption("🔌 Base de datos: Postgres (Neon)")
-
-# ------------------------------
-# Utilidades de lectura/escritura
-# ------------------------------
-def query_df(sql: str, params=()):
-    con = get_conn()
-    try:
-        with con.cursor() as cur:
-            cur.execute(sql, params)
-            cols = [d[0] for d in cur.description]
-            rows = cur.fetchall()
-        return pd.DataFrame(rows, columns=cols)
-    finally:
-        con.close()
-
-def exec_sql(sql: str, params=()):
-    con = get_conn()
-    try:
-        with con.cursor() as cur:
-            cur.execute(sql, params)
-    finally:
-        con.close()
-    st.cache_data.clear()
-
-# ------------------------------
-# Funciones cacheadas
-# ------------------------------
-@st.cache_data(ttl=30)
-def buscar_pacientes(q: str):
-    like = f"%{q.strip()}%" if q else "%"
-    # Nota: en Postgres el placeholder es %s (no ?)
-    return query_df("""
-        SELECT id, nombre, edad, telefono, notas, fotos_URL
-        FROM pacientes
-        WHERE nombre LIKE %s
-        ORDER BY nombre
-    """, (like,))
-
-# ------------------------------
-# UI: Buscador + Nuevo paciente
-# ------------------------------
+# --- BUSCADOR + NUEVO PACIENTE ---
 col1, col2 = st.columns([2, 1])
 
 with col1:
@@ -134,27 +75,25 @@ with col2:
         if ok and nombre.strip():
             exec_sql("""
               INSERT INTO pacientes(nombre, edad, telefono, notas, fotos_URL)
-              VALUES (%s, %s, %s, %s, %s)
-              ON CONFLICT (nombre) DO UPDATE SET
-                edad = EXCLUDED.edad,
-                telefono = EXCLUDED.telefono,
-                notas = EXCLUDED.notas,
-                fotos_URL = EXCLUDED.fotos_URL
+              VALUES (?, ?, ?, ?, ?)
+              ON CONFLICT(nombre) DO UPDATE SET
+                edad=excluded.edad,
+                telefono=excluded.telefono,
+                notas=excluded.notas,
+                fotos_URL=excluded.fotos_URL
             """, (nombre.strip(), edad if edad > 0 else None, telefono, notas_pac, url))
             st.success("Paciente guardado.")
 
 st.divider()
 
-# ------------------------------
-# UI: Registrar medición
-# ------------------------------
+# --- REGISTRAR MEDICIÓN ---
 st.subheader("📝 Registrar medición (cita)")
 todos = buscar_pacientes("")  # todos
 if todos.empty:
     st.info("Primero crea al menos un paciente.")
 else:
     nombre_sel = st.selectbox("Paciente", todos["nombre"].tolist())
-    pid = int(todos.loc[todos["nombre"] == nombre_sel, "id"].iloc[0])
+    pid = int(todos[todos["nombre"] == nombre_sel].iloc[0]["id"])
 
     with st.form("add_meas"):
         c1, c2, c3, c4 = st.columns(4)
@@ -177,7 +116,6 @@ else:
         pantorrilla_flex = h4.number_input("Pantorrilla (fuerza)", 0.0, step=0.1)
 
         notas = st.text_area("Notas de la cita", height=80)
-
         save = st.form_submit_button("Guardar medición")
         if save:
             exec_sql("""
@@ -185,22 +123,22 @@ else:
               (paciente_id, fecha, peso, grasa, musculo,
                brazo_rest, brazo_flex, pecho_rest, pecho_flex,
                cintura, cadera, pierna_flex, pantorrilla_flex, notas)
-              VALUES (%s, %s, %s, %s, %s,
-                      %s, %s, %s, %s,
-                      %s, %s, %s, %s, %s)
-              ON CONFLICT (paciente_id, fecha) DO UPDATE SET
-                peso = EXCLUDED.peso,
-                grasa = EXCLUDED.grasa,
-                musculo = EXCLUDED.musculo,
-                brazo_rest = EXCLUDED.brazo_rest,
-                brazo_flex = EXCLUDED.brazo_flex,
-                pecho_rest = EXCLUDED.pecho_rest,
-                pecho_flex = EXCLUDED.pecho_flex,
-                cintura = EXCLUDED.cintura,
-                cadera = EXCLUDED.cadera,
-                pierna_flex = EXCLUDED.pierna_flex,
-                pantorrilla_flex = EXCLUDED.pantorrilla_flex,
-                notas = EXCLUDED.notas
+              VALUES (?, ?, ?, ?, ?,
+                      ?, ?, ?, ?,
+                      ?, ?, ?, ?, ?)
+              ON CONFLICT(paciente_id, fecha) DO UPDATE SET
+                peso=excluded.peso,
+                grasa=excluded.grasa,
+                musculo=excluded.musculo,
+                brazo_rest=excluded.brazo_rest,
+                brazo_flex=excluded.brazo_flex,
+                pecho_rest=excluded.pecho_rest,
+                pecho_flex=excluded.pecho_flex,
+                cintura=excluded.cintura,
+                cadera=excluded.cadera,
+                pierna_flex=excluded.pierna_flex,
+                pantorrilla_flex=excluded.pantorrilla_flex,
+                notas=excluded.notas
             """, (pid, str(fecha), peso, grasa, musculo,
                   brazo_rest, brazo_flex, pecho_rest, pecho_flex,
                   cintura, cadera, pierna_flex, pantorrilla_flex, notas))
@@ -212,7 +150,7 @@ else:
                brazo_rest, brazo_flex, pecho_rest, pecho_flex,
                cintura, cadera, pierna_flex, pantorrilla_flex, notas
         FROM mediciones
-        WHERE paciente_id = %s
+        WHERE paciente_id=?
         ORDER BY fecha DESC
     """, (pid,))
     if hist.empty:
