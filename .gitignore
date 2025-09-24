@@ -1,0 +1,31 @@
+# Entornos virtuales
+venv/
+.venv/
+env/
+ENV/
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+.Python
+*.sqlite3
+*.db
+
+# Carpeta local de datos (NO subir SQLite a GitHub)
+data/
+*.db
+
+# Archivos de configuración locales
+*.env
+.DS_Store
+Thumbs.db
+
+# Archivos de logs
+*.log
+
+# Archivos temporales de PyCharm/VSCode
+.idea/
+.vscode/
+
+# Archivos de cache de Streamlit
+.streamlit/
