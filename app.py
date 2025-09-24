@@ -274,12 +274,17 @@ def _ext_of(filename: str, default_ext: str) -> str:
 def _ensure_unique_name(drive, parent_id: str, name: str) -> str:
     """Si 'name' existe en la carpeta, devuelve name-2, name-3, ..."""
     base, ext = Path(name).stem, Path(name).suffix
+
+    # escapamos comillas simples para la query de Drive
+    safe_base = base.replace("'", "\\'")
+
     q = (
         "trashed=false and "
         f"'{parent_id}' in parents and "
-        f"name contains '{base.replace(\"'\", \"\\\\'\")}'"
+        f"name contains '{safe_base}'"
     )
-    res = get_drive().files().list(
+
+    res = drive.files().list(
         q=q, fields="files(name)", pageSize=100,
         supportsAllDrives=True, includeItemsFromAllDrives=True
     ).execute()
@@ -287,12 +292,14 @@ def _ensure_unique_name(drive, parent_id: str, name: str) -> str:
 
     if name not in existing:
         return name
+
     i = 2
     while True:
         cand = f"{base}-{i}{ext}"
         if cand not in existing:
             return cand
         i += 1
+
 
 
 def ensure_cita_folder(pid: int, fecha_str: str) -> str:
