@@ -143,6 +143,114 @@ else:
                   brazo_rest, brazo_flex, pecho_rest, pecho_flex,
                   cintura, cadera, pierna_flex, pantorrilla_flex, notas))
             st.success("✅ Medición guardada.")
+    st.divider()
+    st.subheader("📂 Agregar/Actualizar PDFs de una cita")
+
+    # Reusar la lista de pacientes
+    todos_pdf = buscar_pacientes("")  # todos
+    if todos_pdf.empty:
+        st.info("Primero crea al menos un paciente.")
+    else:
+        pac_sel = st.selectbox("Paciente", todos_pdf["nombre"].tolist(), key="pdfs_pac")
+        pid_pdf = int(todos_pdf.loc[todos_pdf["nombre"] == pac_sel, "id"].iloc[0])
+
+        # Traer citas del paciente (con PDFs actuales)
+        citas = query_df("""
+                         SELECT fecha, rutina_pdf, plan_pdf
+                         FROM mediciones
+                         WHERE paciente_id = ?
+                         ORDER BY fecha DESC
+                         """, (pid_pdf,))
+
+        if citas.empty:
+            st.info("Este paciente aún no tiene citas registradas.")
+        else:
+            fecha_sel = st.selectbox("Fecha de la cita", citas["fecha"].tolist(), key="pdfs_fecha")
+            fecha_key = str(fecha_sel)  # para usar en keys de widgets
+
+
+            # --- Utilidades para mostrar enlaces bonitos ---
+            def to_drive_preview(url: str) -> str:
+                if not url:
+                    return ""
+                url = url.strip()
+                if "drive.google.com" in url:
+                    url = url.split("?")[0]
+                    if "/view" in url:
+                        url = url.replace("/view", "/preview")
+                    elif "/preview" not in url:
+                        url = url[:-1] + "preview" if url.endswith("/") else url + "/preview"
+                return url
+
+
+            def show_link(label: str, url: str):
+                if not url:
+                    st.write(f"• {label}: _vacío_")
+                    return
+                cols = st.columns([0.35, 0.65])
+                with cols[0]:
+                    st.link_button(f"🔗 {label}", url)
+                with cols[1]:
+                    # key único por fecha para evitar colisiones al cambiar de cita
+                    st.text_input(f"URL {label}", url, key=f"show_{label}_{fecha_key}", disabled=True)
+
+
+            # Valores actuales
+            actual = citas.loc[citas["fecha"] == fecha_sel].iloc[0]
+            rutina_actual = (actual["rutina_pdf"] or "").strip()
+            plan_actual = (actual["plan_pdf"] or "").strip()
+
+            # Inputs editables (keys por fecha)
+            st.caption("Si dejas un campo vacío, se mantiene el valor actual (no se borra).")
+            rutina_url = st.text_input("URL Rutina (PDF)", value=rutina_actual, key=f"rutina_pdf_input_{fecha_key}")
+            plan_url = st.text_input("URL Plan alimenticio (PDF)", value=plan_actual, key=f"plan_pdf_input_{fecha_key}")
+
+            colu1, colu2 = st.columns([1, 1])
+            with colu1:
+                guardar = st.button("Guardar PDFs")
+            with colu2:
+                limpiar = st.button("Vaciar ambos PDFs (dejar en blanco)")
+
+            # --- Mostrar enlaces guardados (clicables) ---
+            st.markdown("### 📎 Enlaces guardados")
+            show_link("Rutina (PDF)", rutina_actual)
+            show_link("Plan alimenticio (PDF)", plan_actual)
+
+            # --- (Opcional) Preview embebido si es Drive ---
+            with st.expander("👁️ Vista previa rápida (Google Drive)"):
+                if rutina_actual:
+                    st.markdown("**Rutina**")
+                    st.components.v1.iframe(to_drive_preview(rutina_actual), height=360)
+                if plan_actual:
+                    st.markdown("**Plan alimenticio**")
+                    st.components.v1.iframe(to_drive_preview(plan_actual), height=360)
+
+            # --- Acciones ---
+            if guardar:
+                rutina_final = rutina_url.strip() if rutina_url.strip() else rutina_actual
+                plan_final = plan_url.strip() if plan_url.strip() else plan_actual
+
+                exec_sql("""
+                         UPDATE mediciones
+                         SET rutina_pdf = ?,
+                             plan_pdf   = ?
+                         WHERE paciente_id = ?
+                           AND fecha = ?
+                         """, (rutina_final or None, plan_final or None, pid_pdf, fecha_sel))
+
+                st.success("PDFs actualizados ✅")
+                st.rerun()  # refresca valores sin tocar session_state de los widgets
+
+            if limpiar:
+                exec_sql("""
+                         UPDATE mediciones
+                         SET rutina_pdf = NULL,
+                             plan_pdf   = NULL
+                         WHERE paciente_id = ?
+                           AND fecha = ?
+                         """, (pid_pdf, fecha_sel))
+                st.success("PDFs vaciados ✅")
+                st.rerun()
 
     st.subheader("📊 Historial")
     hist = query_df("""
