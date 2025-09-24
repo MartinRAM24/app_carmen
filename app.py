@@ -183,7 +183,7 @@ def query_mediciones(pid):
     return df_sql("""
        SELECT fecha, rutina_pdf, plan_pdf
          FROM mediciones
-        WHERE paciente_id = ?
+        WHERE paciente_id = %s
         ORDER BY fecha DESC
     """, (pid,))
 
