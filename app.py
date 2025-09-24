@@ -122,7 +122,7 @@ SCOPES = ["https://www.googleapis.com/auth/drive"]
 
 def get_drive():
     """Devuelve cliente de Google Drive usando secrets en la nube"""
-    info = dict(st.secrets["google_service_account"])
+    info = dict(st.secrets["gcp_service_account"])
     creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
     return build("drive", "v3", credentials=creds)
 
