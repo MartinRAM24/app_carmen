@@ -18,21 +18,24 @@ os.makedirs(MEDIA_DIR, exist_ok=True)
 # =========================
 # --- DB helpers (Postgres con psycopg) ---
 
+
 NEON_URL = st.secrets.get("NEON_DATABASE_URL") or os.getenv("NEON_DATABASE_URL")
 
 @st.cache_resource
 def conn():
     if not NEON_URL:
-        st.stop()  # fuerza a configurar la URL
-    # autocommit True para no olvidar commit
+        st.error("Falta NEON_DATABASE_URL en secrets o env"); st.stop()
     return psycopg.connect(NEON_URL, autocommit=True)
 
-def exec_sql(q_ps: str, p: tuple = ()):
+def exec_sql(sql: str, params: tuple = ()):
     with conn().cursor() as cur:
-        cur.execute(q_ps, p)
+        cur.execute(sql, params)
 
-def df_sql(q_ps: str, p: tuple = ()):
-    return pd.read_sql_query(q_ps, conn(), params=p)
+def query_df(sql: str, params: tuple = ()):
+    # pandas espera 'params' (tupla); psycopg3 funciona directo
+    with conn() as c:
+        return pd.read_sql_query(sql, c, params=params)
+
 
 
 # =========================
@@ -117,7 +120,7 @@ ensure_mediciones_columns()
 
 def delete_paciente(pid: int):
     # 1) Borrar fotos físicas del disco (si existen)
-    fotos = query_df("SELECT filepath FROM fotos WHERE paciente_id = %s" (pid,))
+    fotos = query_df("SELECT filepath FROM fotos WHERE paciente_id = %s", (pid,))
     for _, row in fotos.iterrows():
         path = row["filepath"]
         try:
@@ -127,8 +130,8 @@ def delete_paciente(pid: int):
             st.warning(f"No se pudo borrar {path}: {e}")
 
     # 2) Borrar registros dependientes
-    exec_sql("DELETE FROM fotos WHERE paciente_id = %s" (pid,))
-    exec_sql("DELETE FROM mediciones WHERE paciente_id = %s" (pid,))
+    exec_sql("DELETE FROM fotos WHERE paciente_id = %s", (pid,))
+    exec_sql("DELETE FROM mediciones WHERE paciente_id = %s", (pid,))
 
     # 3) Borrar paciente
     exec_sql("DELETE FROM pacientes WHERE id = %s" (pid,))
