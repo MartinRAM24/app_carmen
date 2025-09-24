@@ -377,7 +377,7 @@ if role == "admin":
             st.info("Sin mediciones registradas todavía.")
         else:
             fecha_sel_m = st.selectbox("Editar medición de fecha", citas_m["fecha"].tolist(), key=f"med_fecha_{pid}")
-            actual_m = df_sql("SELECT * FROM mediciones WHERE paciente_id=? AND fecha=?", (pid, fecha_sel_m)).iloc[0]
+            actual_m = df_sql("SELECT * FROM mediciones WHERE paciente_id=%s AND fecha=%s", (pid, fecha_sel_m)).iloc[0]
 
             st.markdown("#### Editar valores")
             cols = st.columns(6)
