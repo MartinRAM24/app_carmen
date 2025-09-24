@@ -205,6 +205,68 @@ else:
                   brazo_rest, brazo_flex, pecho_rest, pecho_flex,
                   cintura, cadera, pierna_flex, pantorrilla_flex, notas))
             st.success("✅ Medición guardada.")
+    st.divider()
+    st.subheader("📂 Agregar/Actualizar PDFs de una cita")
+
+    # Reusar la lista de pacientes
+    todos_pdf = buscar_pacientes("")  # todos
+    if todos_pdf.empty:
+        st.info("Primero crea al menos un paciente.")
+    else:
+        pac_sel = st.selectbox("Paciente", todos_pdf["nombre"].tolist(), key="pdfs_pac")
+        pid_pdf = int(todos_pdf.loc[todos_pdf["nombre"] == pac_sel, "id"].iloc[0])
+
+        # Traer citas del paciente (con PDFs actuales)
+        citas = query_df("""
+                         SELECT fecha, rutina_pdf, plan_pdf
+                         FROM mediciones
+                         WHERE paciente_id = %s
+                         ORDER BY fecha DESC
+                         """, (pid_pdf,))
+
+        if citas.empty:
+            st.info("Este paciente aún no tiene citas registradas.")
+        else:
+            fecha_sel = st.selectbox("Fecha de la cita", citas["fecha"].tolist(), key="pdfs_fecha")
+
+            # Valores actuales para no pisar por accidente
+            actual = citas.loc[citas["fecha"] == fecha_sel].iloc[0]
+            rutina_actual = actual["rutina_pdf"] or ""
+            plan_actual = actual["plan_pdf"] or ""
+
+            st.caption("Si dejas un campo vacío, se mantiene el valor actual (no se borra).")
+            rutina_url = st.text_input("URL Rutina (PDF)", value=rutina_actual, key="rutina_pdf_input")
+            plan_url = st.text_input("URL Plan alimenticio (PDF)", value=plan_actual, key="plan_pdf_input")
+
+            colu1, colu2 = st.columns([1, 1])
+            with colu1:
+                guardar = st.button("Guardar PDFs")
+            with colu2:
+                limpiar = st.button("Vaciar ambos PDFs (dejar en blanco)")
+
+            if guardar:
+                # Mantener el valor previo si el input quedó vacío
+                rutina_final = rutina_url.strip() if rutina_url.strip() else rutina_actual
+                plan_final = plan_url.strip() if plan_url.strip() else plan_actual
+
+                exec_sql("""
+                         UPDATE mediciones
+                         SET rutina_pdf = %s,
+                             plan_pdf   = %s
+                         WHERE paciente_id = %s
+                           AND fecha = %s
+                         """, (rutina_final or None, plan_final or None, pid_pdf, fecha_sel))
+                st.success("PDFs actualizados ✅")
+
+            if limpiar:
+                exec_sql("""
+                         UPDATE mediciones
+                         SET rutina_pdf = NULL,
+                             plan_pdf   = NULL
+                         WHERE paciente_id = %s
+                           AND fecha = %s
+                         """, (pid_pdf, fecha_sel))
+                st.success("PDFs vaciados ✅")
 
     st.subheader("📊 Historial")
     hist = query_df("""
