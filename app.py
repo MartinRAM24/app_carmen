@@ -320,12 +320,14 @@ def ensure_cita_folder(pid: int, fecha_str: str) -> str:
 
     # 3) buscar por nombre (fecha) bajo la carpeta del paciente
     drive = get_drive()
-    name = fecha_str.strip()  # ej. '2025-09-24'
+    folder_name = fecha_str.strip()
+
+    # aquí no usamos escapes raros → nombre exacto
     q = (
         "mimeType='application/vnd.google-apps.folder' and trashed=false "
-        f"and name='{name.replace(\"'\", \"\\\\'\")}' "
-        f"and '{patient_folder_id}' in parents"
+        f"and name='{folder_name}' and '{patient_folder_id}' in parents"
     )
+
     res = drive.files().list(
         q=q, fields="files(id,name)", pageSize=1,
         supportsAllDrives=True, includeItemsFromAllDrives=True
@@ -336,7 +338,7 @@ def ensure_cita_folder(pid: int, fecha_str: str) -> str:
     else:
         # 4) crear si no existe
         meta = {
-            "name": name,
+            "name": folder_name,
             "mimeType": "application/vnd.google-apps.folder",
             "parents": [patient_folder_id],
         }
@@ -355,6 +357,7 @@ def ensure_cita_folder(pid: int, fecha_str: str) -> str:
         DO UPDATE SET drive_cita_folder_id = EXCLUDED.drive_cita_folder_id
     """, (pid, fecha_str, cita_folder_id))
     return cita_folder_id
+
 
 
 
