@@ -298,16 +298,27 @@ if role == "admin":
             st.stop()
         pac_sel = st.selectbox("Paciente", lista["nombre"].tolist(), key="adm_pac")
         pid = int(lista.loc[lista["nombre"] == pac_sel, "id"].iloc[0])
-        
-    with st.expander("⚠️ Eliminar paciente"):
-        st.warning("Esta acción borrará al paciente y todos sus datos (mediciones y fotos).")
-        col_del1, col_del2 = st.columns(2)
-        with col_del1:
-            if st.button("❌ Cancelar", key=f"cancel_del_{pid}"):
-                st.info("Cancelado.")
-        with col_del2:
-            if st.button("🗑️ Sí, eliminar paciente", key=f"confirm_del_{pid}"):
+
+    for i, row in pacientes.iterrows():
+        col1, col2 = st.columns([4, 1])
+        with col1:
+            st.write(f"👤 {row['nombre']} (id={row['id']})")
+        with col2:
+            if st.button("🗑️ Eliminar", key=f"del_{row['id']}"):
+                st.session_state["_delete_pid"] = row["id"]
+
+    # Confirmación
+    if "_delete_pid" in st.session_state:
+        pid = st.session_state["_delete_pid"]
+        st.error("⚠️ ¿Seguro que quieres eliminar este paciente y todos sus datos?")
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("❌ Cancelar", key="cancel_del"):
+                del st.session_state["_delete_pid"]
+        with c2:
+            if st.button("✅ Sí, eliminar", key="confirm_del"):
                 delete_paciente(pid)
+                del st.session_state["_delete_pid"]
                 st.rerun()
 
     with c2:
