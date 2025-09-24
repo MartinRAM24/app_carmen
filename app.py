@@ -18,18 +18,21 @@ os.makedirs(MEDIA_DIR, exist_ok=True)
 # =========================
 # --- DB helpers (Postgres con psycopg) ---
 
-
 NEON_URL = st.secrets.get("NEON_DATABASE_URL") or os.getenv("NEON_DATABASE_URL")
 
 @st.cache_resource
 def conn():
     if not NEON_URL:
-        st.error("Falta NEON_DATABASE_URL en secrets o env"); st.stop()
+        st.stop()  # fuerza a configurar la URL
+    # autocommit True para no olvidar commit
     return psycopg.connect(NEON_URL, autocommit=True)
 
-def exec_sql(sql: str, params: tuple = ()):
+def exec_sql(q_ps: str, p: tuple = ()):
     with conn().cursor() as cur:
-        cur.execute(sql, params)
+        cur.execute(q_ps, p)
+
+def df_sql(q_ps: str, p: tuple = ()):
+    return pd.read_sql_query(q_ps, conn(), params=p)
 
 def query_df(sql: str, params: tuple = ()):
     # pandas espera 'params' (tupla); psycopg3 funciona directo
