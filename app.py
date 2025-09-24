@@ -3,6 +3,7 @@ import streamlit as st
 import os, uuid, hashlib, io, traceback
 import pandas as pd
 from datetime import date
+import psycopg
 
 st.set_page_config(page_title="Pacientes", page_icon="🩺", layout="wide")
 
@@ -15,30 +16,25 @@ os.makedirs(MEDIA_DIR, exist_ok=True)
 # =========================
 # DB helpers (Neon / Postgres con psycopg)
 # =========================
-import psycopg
+# --- DB helpers (Postgres con psycopg) ---
 
-# Lee URL de Neon de secrets o env
-NEON_URL = st.secrets.get("NEON_DATABASE_URL") if hasattr(st, "secrets") else os.getenv("NEON_DATABASE_URL")
-if not NEON_URL:
-    st.warning("Configura NEON_DATABASE_URL en secrets o variables de entorno para conectar a PostgreSQL.")
 
+NEON_URL = st.secrets.get("NEON_DATABASE_URL") or os.getenv("NEON_DATABASE_URL")
+
+@st.cache_resource
 def conn():
-    return psycopg.connect(NEON_URL)
+    if not NEON_URL:
+        st.stop()  # fuerza a configurar la URL
+    # autocommit True para no olvidar commit
+    return psycopg.connect(NEON_URL, autocommit=True)
 
-def _qmark_to_psql(q: str) -> str:
-    # Convierte '?' (SQLite) -> '%s' (Postgres) para no tocar tus queries
-    return q.replace("?", "%s")
+def exec_sql(q_ps: str, p: tuple = ()):
+    with conn().cursor() as cur:
+        cur.execute(q_ps, p)
 
-def exec_sql(q, p=()):
-    q_ps = _qmark_to_psql(q)
-    with conn() as c:
-        with c.cursor() as cur:
-            cur.execute(q_ps, p)
+def df_sql(q_ps: str, p: tuple = ()):
+    return pd.read_sql_query(q_ps, conn(), params=p)
 
-def df_sql(q, p=()):
-    q_ps = _qmark_to_psql(q)
-    with conn() as c:
-        return pd.read_sql_query(q_ps, c, params=p)
 
 # =========================
 # Esquema de tablas (Postgres)
