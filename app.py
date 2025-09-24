@@ -23,16 +23,17 @@ NEON_URL = st.secrets.get("NEON_DATABASE_URL") or os.getenv("NEON_DATABASE_URL")
 @st.cache_resource
 def conn():
     if not NEON_URL:
-        st.stop()  # fuerza a configurar la URL
-    # autocommit True para no olvidar commit
+        st.error("Falta NEON_DATABASE_URL en secrets o env"); st.stop()
     return psycopg.connect(NEON_URL, autocommit=True)
 
-def exec_sql(q_ps: str, p: tuple = ()):
+def exec_sql(sql: str, params: tuple = ()):
     with conn().cursor() as cur:
-        cur.execute(q_ps, p)
+        cur.execute(sql, params)
 
-def df_sql(q_ps: str, p: tuple = ()):
-    return pd.read_sql_query(q_ps, conn(), params=p)
+def df_sql(sql: str, params: tuple = ()):
+    with conn() as c:
+        return pd.read_sql_query(sql, c, params=params)
+
 
 
 
@@ -118,7 +119,7 @@ ensure_mediciones_columns()
 
 def delete_paciente(pid: int):
     # 1) Borrar fotos físicas del disco (si existen)
-    fotos = query_df("SELECT filepath FROM fotos WHERE paciente_id = %s", (pid,))
+    fotos = df_sql("SELECT filepath FROM fotos WHERE paciente_id = %s", (pid,))
     for _, row in fotos.iterrows():
         path = row["filepath"]
         try:
@@ -132,9 +133,10 @@ def delete_paciente(pid: int):
     exec_sql("DELETE FROM mediciones WHERE paciente_id = %s", (pid,))
 
     # 3) Borrar paciente
-    exec_sql("DELETE FROM pacientes WHERE id = %s" (pid,))
+    exec_sql("DELETE FROM pacientes WHERE id = %s", (pid,))
 
     st.success("Paciente eliminado ✅")
+
 
 
 # =========================
@@ -177,8 +179,11 @@ def get_or_create_token(pid: int):
     return tok
 
 def buscar_pacientes(filtro=""):
-    return df_sql("SELECT id, nombre FROM pacientes WHERE nombre LIKE %s ORDER BY nombre",
-                  (f"%{filtro}%",))
+    return df_sql(
+        "SELECT id, nombre FROM pacientes WHERE nombre ILIKE %s ORDER BY nombre",
+        (f"%{filtro}%",)
+    )
+
 
 def query_mediciones(pid):
     return df_sql("""
@@ -189,13 +194,15 @@ def query_mediciones(pid):
     """, (pid,))
 
 def upsert_medicion(pid, fecha, rutina_pdf, plan_pdf):
-    # UPSERT en Postgres (paciente_id, fecha)
     exec_sql("""
       INSERT INTO mediciones (paciente_id, fecha, rutina_pdf, plan_pdf)
-      VALUES (?, ?, ?, ?)
-      ON CONFLICT(paciente_id, fecha)
-      DO UPDATE SET rutina_pdf = EXCLUDED.rutina_pdf, plan_pdf = EXCLUDED.plan_pdf
+      VALUES (%s, %s, %s, %s)
+      ON CONFLICT (paciente_id, fecha)
+      DO UPDATE SET
+        rutina_pdf = EXCLUDED.rutina_pdf,
+        plan_pdf   = EXCLUDED.plan_pdf
     """, (pid, fecha, rutina_pdf, plan_pdf))
+
 
 def save_image(file, pid: int, fecha_str: str):
     ext = os.path.splitext(file.name)[1].lower() or ".jpg"
@@ -208,13 +215,16 @@ def save_image(file, pid: int, fecha_str: str):
     return path
 
 def to_drive_preview(url: str) -> str:
-    if not url: return ""
-    u = url.strip().split("%s")[0]
+    if not url:
+        return ""
+    u = url.strip().split("?")[0]   # ← corregido
     if "drive.google.com" in u:
-        if "/view" in u: u = u.replace("/view", "/preview")
+        if "/view" in u:
+            u = u.replace("/view", "/preview")
         elif not u.endswith("/preview"):
             u = u[:-1] + "preview" if u.endswith("/") else u + "/preview"
     return u
+
 
 # =========================
 # UI (tu misma lógica)
