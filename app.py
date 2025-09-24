@@ -4,6 +4,11 @@ import os, uuid, hashlib, traceback
 import pandas as pd
 from datetime import date
 import psycopg
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
+import io, re
+
 
 st.set_page_config(page_title="Pacientes", page_icon="🩺", layout="wide")
 
@@ -113,8 +118,76 @@ def ensure_mediciones_columns():
     for col, typ in needed:
         add_col_if_missing("mediciones", col, typ)
 
+@st.cache_resource
+def get_drive():
+    creds = service_account.Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"],
+        scopes=["https://www.googleapis.com/auth/drive"]
+    )
+    return build("drive", "v3", credentials=creds)
+
+def extract_drive_folder_id(url_or_id: str) -> str | None:
+    if not url_or_id:
+        return None
+    s = url_or_id.strip()
+    m = re.search(r"/folders/([A-Za-z0-9_-]+)", s)
+    if m: return m.group(1)
+    if re.fullmatch(r"[A-Za-z0-9_-]{10,}", s): return s
+    return None
+
+def ensure_patient_folder(nombre: str, pid: int) -> str:
+    """Crea carpeta del paciente bajo la raíz si no existe."""
+    drive = get_drive()
+    root_id = st.secrets["drive"]["patients_root_folder_id"]
+    folder_name = f"{pid:05d} - {nombre}"
+    meta = {"name": folder_name, "mimeType": "application/vnd.google-apps.folder", "parents": [root_id]}
+    # crear
+    f = drive.files().create(body=meta, fields="id").execute()
+    return f["id"]
+
+def make_anyone_reader(file_id: str):
+    drive = get_drive()
+    drive.permissions().create(fileId=file_id, body={"type": "anyone", "role": "reader"}).execute()
+
+def upload_pdf_to_folder(file_bytes: bytes, filename: str, folder_id: str) -> dict:
+    drive = get_drive()
+    media = MediaIoBaseUpload(io.BytesIO(file_bytes), mimetype="application/pdf", resumable=False)
+    meta = {"name": filename, "parents": [folder_id]}
+    f = drive.files().create(body=meta, media_body=media, fields="id,webViewLink").execute()
+    make_anyone_reader(f["id"])
+    return f  # {'id':..., 'webViewLink':...}
+
+def upload_image_to_folder(file_bytes: bytes, filename: str, folder_id: str, mime: str) -> dict:
+    drive = get_drive()
+    media = MediaIoBaseUpload(io.BytesIO(file_bytes), mimetype=mime, resumable=False)
+    meta = {"name": filename, "parents": [folder_id]}
+    f = drive.files().create(body=meta, media_body=media, fields="id,webViewLink").execute()
+    make_anyone_reader(f["id"])
+    return f
+
+def drive_image_view_url(file_id: str) -> str:
+    # URL directa para <img>
+    return f"https://drive.google.com/uc?export=view&id={file_id}"
+
+def drive_image_download_url(file_id: str) -> str:
+    return f"https://drive.google.com/uc?export=download&id={file_id}"
+
+def delete_drive_file(file_id: str):
+    try:
+        get_drive().files().delete(fileId=file_id).execute()
+    except Exception:
+        pass  # si ya no existe, ignoramos
+
+
 setup_db()
 ensure_mediciones_columns()
+
+# columnas nuevas para Drive
+add_col_if_missing("pacientes", "drive_folder_id", "TEXT")
+add_col_if_missing("fotos", "drive_file_id", "TEXT")
+add_col_if_missing("fotos", "web_view_link", "TEXT")
+add_col_if_missing("fotos", "filename", "TEXT")
+
 
 def delete_paciente(pid: int):
     # 1) Borrar fotos físicas del disco (si existen)
@@ -142,18 +215,28 @@ def delete_paciente(pid: int):
 # Helpers de dominio
 # =========================
 def delete_foto(photo_id: int):
-    fila = df_sql("SELECT filepath FROM fotos WHERE id = %s", (photo_id,))
+    fila = df_sql("SELECT drive_file_id, filepath FROM fotos WHERE id = %s", (photo_id,))
     if fila.empty:
         st.warning("No se encontró la foto en la base.")
         return
+
+    file_id = fila["drive_file_id"].iloc[0]
     path = fila["filepath"].iloc[0]
+
+    # borra del disco si fuera una foto vieja (compatibilidad)
     try:
         if path and os.path.exists(path):
             os.remove(path)
     except Exception as e:
         st.warning(f"No se pudo borrar el archivo físico: {e}")
         st.text(traceback.format_exc())
+
+    # borra de Drive si existe
+    if file_id:
+        delete_drive_file(file_id)
+
     exec_sql("DELETE FROM fotos WHERE id = %s", (photo_id,))
+
 
 def sha256(x: str) -> str:
     return hashlib.sha256(x.encode()).hexdigest()
@@ -206,23 +289,39 @@ def upsert_medicion(pid, fecha, rutina_pdf, plan_pdf):
 
 
 def save_image(file, pid: int, fecha_str: str):
-    ext = os.path.splitext(file.name)[1].lower() or ".jpg"
-    filename = f"p{pid}_{fecha_str}_{uuid.uuid4().hex}{ext}"
-    path = os.path.join(MEDIA_DIR, filename)
-    with open(path, "wb") as f:
-        f.write(file.read())
-    exec_sql("INSERT INTO fotos (paciente_id, fecha, filepath) VALUES (%s, %s, %s)",
-             (pid, fecha_str, path))
-    return path
+    # sube a Drive en vez de disco
+    pf = df_sql("SELECT drive_folder_id, nombre FROM pacientes WHERE id=%s", (pid,))
+    if pf.empty or not (pf["drive_folder_id"].iloc[0] or "").strip():
+        raise RuntimeError("Este paciente no tiene carpeta de Drive asignada.")
+
+    folder_id = (pf["drive_folder_id"].iloc[0] or "").strip()
+    filename = file.name
+    mime = file.type or "image/jpeg"
+
+    f = upload_image_to_folder(file.read(), filename, folder_id, mime)
+    file_id = f["id"]
+    web_link = f["webViewLink"]
+
+    exec_sql("""
+        INSERT INTO fotos (paciente_id, fecha, filepath, drive_file_id, web_view_link, filename)
+        VALUES (%s,%s,%s,%s,%s,%s)
+    """, (pid, fecha_str, None, file_id, web_link, filename))
+
+    return file_id
+
 
 def to_drive_preview(url: str) -> str:
-    if not url: return ""
-    u = url.strip().split("%s")[0]
+    if not url:
+        return ""
+    u = url.strip()
     if "drive.google.com" in u:
-        if "/view" in u: u = u.replace("/view", "/preview")
+        if "/view" in u:
+            u = u.replace("/view", "/preview")
         elif not u.endswith("/preview"):
-            u = u[:-1] + "preview" if u.endswith("/") else u + "/preview"
+            u = u.rstrip("/") + "/preview"
     return u
+
+
 
 # =========================
 # UI (tu misma lógica)
@@ -282,15 +381,29 @@ if role == "admin":
                 enviar = st.form_submit_button("Guardar")
             if enviar:
                 if not nombre.strip():
-                    st.error("El nombre es obligatorio."); return
+                    st.error("El nombre es obligatorio.");
+                    return
                 dup = df_sql("SELECT id FROM pacientes WHERE nombre = %s", (nombre.strip(),))
                 if not dup.empty:
-                    st.warning("Ya existe un paciente con ese nombre."); return
+                    st.warning("Ya existe un paciente con ese nombre.");
+                    return
+
                 tok = uuid.uuid4().hex[:8]
-                exec_sql("""INSERT INTO pacientes(nombre, fecha_nac, telefono, correo, notas, token)
-                            VALUES(%s,%s,%s,%s,%s,%s)""",
-                         (nombre.strip(), str(fnac), tel.strip(), mail.strip(), notas.strip(), tok))
-                st.success("Paciente creado ✅"); st.rerun()
+                # 1) crea paciente para obtener ID
+                new_row = df_sql("""
+                                 INSERT INTO pacientes (nombre, fecha_nac, telefono, correo, notas, token)
+                                 VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
+                                 """, (nombre.strip(), str(fnac), tel.strip(), mail.strip(), notas.strip(), tok))
+                new_id = int(new_row.iloc[0]["id"])
+
+                # 2) crea carpeta en Drive y guarda en DB
+                folder_id = ensure_patient_folder(nombre.strip(), new_id)
+                exec_sql("UPDATE pacientes SET drive_folder_id=%s WHERE id=%s", (folder_id, new_id))
+
+                st.success("Paciente creado y carpeta en Drive lista ✅");
+                st.rerun()
+
+
         nuevo_paciente()
 
     # --- Búsqueda controlada (no lista nada por defecto) ---
@@ -355,8 +468,39 @@ if role == "admin":
         # si no hay resultados, evita usar pid más abajo
         # puedes hacer un return o un st.stop() si quieres bloquear los tabs
         st.stop()
+    # === Subida directa a Google Drive (PDFs) ===
+    pf = df_sql("SELECT drive_folder_id FROM pacientes WHERE id=%s", (pid,))
+    folder_id = (pf["drive_folder_id"].iloc[0] or "").strip() if not pf.empty else ""
+
+    st.markdown("### ⬆️ Subir PDFs a la carpeta de Drive del paciente")
+    if not folder_id:
+        st.warning("Primero asigna la carpeta de Drive del paciente en la pestaña **🧾 Perfil**.")
+    else:
+        up_r = st.file_uploader("Subir **Rutina (PDF)**", type=["pdf"], key=f"up_r_{pid}")
+        up_p = st.file_uploader("Subir **Plan alimenticio (PDF)**", type=["pdf"], key=f"up_p_{pid}")
+        b1, b2 = st.columns(2)
+        with b1:
+            if up_r and st.button("⬆️ Subir Rutina a Drive"):
+                with st.spinner("Subiendo Rutina a Drive..."):
+                    f = upload_pdf_to_folder(up_r.read(), up_r.name, folder_id)
+                    upsert_medicion(pid, fecha_sel, f["webViewLink"], None)
+                    st.success("Rutina subida y enlazada ✅");
+                    st.rerun()
+        with b2:
+            if up_p and st.button("⬆️ Subir Plan a Drive"):
+                with st.spinner("Subiendo Plan a Drive..."):
+                    f = upload_pdf_to_folder(up_p.read(), up_p.name, folder_id)
+                    exec_sql("""INSERT INTO mediciones (paciente_id, fecha, rutina_pdf, plan_pdf)
+                                VALUES (%s, %s, %s, %s) ON CONFLICT (paciente_id, fecha) DO
+                    UPDATE
+                        SET plan_pdf = EXCLUDED.plan_pdf""",
+                             (pid, fecha_sel, None, f["webViewLink"]))
+                    st.success("Plan subido y enlazado ✅");
+                    st.rerun()
 
     tab_info, tab_medidas, tab_pdfs, tab_fotos = st.tabs(["🧾 Perfil", "📏 Mediciones", "📂 PDFs", "🖼️ Fotos"])
+
+
 
     # --- Mediciones ---
     with tab_medidas:
@@ -603,7 +747,13 @@ if role == "admin":
                         save_image(f, pid, fecha_f.strip())
                     st.success("Fotos subidas ✅"); st.rerun()
 
-        gal = df_sql("SELECT id, fecha, filepath FROM fotos WHERE paciente_id=%s ORDER BY fecha DESC", (pid,))
+        gal = df_sql("""
+                     SELECT id, fecha, filepath, drive_file_id
+                     FROM fotos
+                     WHERE paciente_id = %s
+                     ORDER BY fecha DESC
+                     """, (pid,))
+
         if gal.empty:
             st.info("Sin fotos aún.")
         else:
@@ -613,15 +763,25 @@ if role == "admin":
                 cols = st.columns(4)
                 for idx, r in fila.iterrows():
                     with cols[idx % 4]:
-                        st.image(r["filepath"], use_container_width=True)
-                        c1, c2 = st.columns([1, 1])
-                        with c1:
-                            st.download_button("⬇️ Descargar", data=open(r["filepath"], "rb"),
-                                               file_name=os.path.basename(r["filepath"]))
+                        # si hay drive_file_id, usa URL directa de Drive; si no, usa filepath (compatibilidad)
+                        if r.get("drive_file_id"):
+                            img_url = drive_image_view_url(r["drive_file_id"])
+                            st.image(img_url, use_container_width=True)
+                            dl_url = drive_image_download_url(r["drive_file_id"])
+                            c1, c2 = st.columns([1, 1])
+                            with c1:
+                                st.link_button("⬇️ Descargar", dl_url)
+                        else:
+                            st.image(r["filepath"], use_container_width=True)
+                            c1, c2 = st.columns([1, 1])
+                            with c1:
+                                st.download_button("⬇️ Descargar", data=open(r["filepath"], "rb"),
+                                                   file_name=os.path.basename(r["filepath"]))
+
                         with c2:
                             if st.button("🗑️ Eliminar", key=f"del_{r['id']}"):
                                 st.session_state._delete_photo_id = int(r["id"])
-                                st.session_state._delete_photo_path = r["filepath"]
+                                st.session_state._delete_photo_path = r.get("filepath")
                                 st.session_state._delete_photo_date = fch
 
                 if "_delete_photo_id" in st.session_state:
@@ -702,19 +862,20 @@ elif role == "paciente":
         st.dataframe(hist_ro, use_container_width=True, hide_index=True)
 
     st.markdown("### 🖼️ Tus fotos")
-    gal = df_sql("SELECT fecha, filepath FROM fotos WHERE paciente_id=%s ORDER BY fecha DESC", (int(pac["id"]),))
-    if gal.empty:
-        st.info("Aún no hay fotos registradas.")
+    gal = df_sql("""
+                 SELECT fecha, filepath, drive_file_id
+                 FROM fotos
+                 WHERE paciente_id = %s
+                 ORDER BY fecha DESC
+                 """, (int(pac["id"]),))
+
+    # dentro del loop:
+    if r["drive_file_id"]:
+        img_url = drive_image_view_url(r["drive_file_id"])
+        st.image(img_url, use_container_width=True)
     else:
-        for fch in sorted(gal["fecha"].unique(), reverse=True):
-            st.markdown(f"#### 📅 {fch}")
-            fila = gal[gal["fecha"] == fch]
-            cols = st.columns(4)
-            i = 0
-            for _, r in fila.iterrows():
-                with cols[i % 4]:
-                    st.image(r["filepath"], use_container_width=True)
-                i += 1
+        st.image(r["filepath"], use_container_width=True)
+
 
 else:
     st.info("Elige un modo de acceso en la barra lateral (Admin o Paciente).")

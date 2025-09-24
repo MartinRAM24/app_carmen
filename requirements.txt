@@ -3,3 +3,5 @@ pandas
 openpyxl
 psycopg[binary]
 python-dotenv
+google-api-python-client
+google-auth
