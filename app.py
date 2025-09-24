@@ -8,6 +8,8 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 import io, re
+from googleapiclient.errors import HttpError
+from pathlib import Path
 
 
 st.set_page_config(page_title="Pacientes", page_icon="🩺", layout="wide")
@@ -255,6 +257,98 @@ add_col_if_missing("pacientes", "drive_folder_id", "TEXT")
 add_col_if_missing("fotos", "drive_file_id", "TEXT")
 add_col_if_missing("fotos", "web_view_link", "TEXT")
 add_col_if_missing("fotos", "filename", "TEXT")
+add_col_if_missing("mediciones", "drive_cita_folder_id", "TEXT")
+
+
+def _slugify(s: str) -> str:
+    s = s.strip().lower()
+    s = re.sub(r"[^\w\s.-]", "", s, flags=re.UNICODE)
+    s = re.sub(r"\s+", "_", s)
+    s = re.sub(r"_+", "_", s)
+    return s.strip("_")
+
+def _ext_of(filename: str, default_ext: str) -> str:
+    ext = Path(filename).suffix.lower()
+    return ext if ext else default_ext
+
+def _ensure_unique_name(drive, parent_id: str, name: str) -> str:
+    """Si 'name' existe en la carpeta, devuelve name-2, name-3, ..."""
+    base, ext = Path(name).stem, Path(name).suffix
+    q = (
+        "trashed=false and "
+        f"'{parent_id}' in parents and "
+        f"name contains '{base.replace(\"'\", \"\\\\'\")}'"
+    )
+    res = get_drive().files().list(
+        q=q, fields="files(name)", pageSize=100,
+        supportsAllDrives=True, includeItemsFromAllDrives=True
+    ).execute()
+    existing = {f["name"] for f in res.get("files", [])}
+
+    if name not in existing:
+        return name
+    i = 2
+    while True:
+        cand = f"{base}-{i}{ext}"
+        if cand not in existing:
+            return cand
+        i += 1
+
+
+def ensure_cita_folder(pid: int, fecha_str: str) -> str:
+    """Crea (o devuelve) la subcarpeta de la cita (fecha) dentro de la carpeta del paciente."""
+    # 1) carpeta del paciente
+    d = df_sql("SELECT drive_folder_id FROM pacientes WHERE id=%s", (pid,))
+    if d.empty or not (d["drive_folder_id"].iloc[0] or "").strip():
+        raise RuntimeError("El paciente no tiene carpeta de Drive asignada.")
+    patient_folder_id = d["drive_folder_id"].iloc[0].strip()
+
+    # 2) ¿ya tenemos subcarpeta guardada en la DB?
+    m = df_sql("""SELECT drive_cita_folder_id FROM mediciones
+                  WHERE paciente_id=%s AND fecha=%s""", (pid, fecha_str))
+    if not m.empty:
+        cid = (m["drive_cita_folder_id"].iloc[0] or "").strip()
+        if cid:
+            return cid
+
+    # 3) buscar por nombre (fecha) bajo la carpeta del paciente
+    drive = get_drive()
+    name = fecha_str.strip()  # ej. '2025-09-24'
+    q = (
+        "mimeType='application/vnd.google-apps.folder' and trashed=false "
+        f"and name='{name.replace(\"'\", \"\\\\'\")}' "
+        f"and '{patient_folder_id}' in parents"
+    )
+    res = drive.files().list(
+        q=q, fields="files(id,name)", pageSize=1,
+        supportsAllDrives=True, includeItemsFromAllDrives=True
+    ).execute()
+    files = res.get("files", [])
+    if files:
+        cita_folder_id = files[0]["id"]
+    else:
+        # 4) crear si no existe
+        meta = {
+            "name": name,
+            "mimeType": "application/vnd.google-apps.folder",
+            "parents": [patient_folder_id],
+        }
+        cita_folder = drive.files().create(
+            body=meta,
+            fields="id,name,parents",
+            supportsAllDrives=True
+        ).execute()
+        cita_folder_id = cita_folder["id"]
+
+    # 5) guardar el id en la tabla mediciones
+    exec_sql("""
+        INSERT INTO mediciones (paciente_id, fecha, drive_cita_folder_id)
+        VALUES (%s,%s,%s)
+        ON CONFLICT (paciente_id, fecha)
+        DO UPDATE SET drive_cita_folder_id = EXCLUDED.drive_cita_folder_id
+    """, (pid, fecha_str, cita_folder_id))
+    return cita_folder_id
+
 
 
 def delete_paciente(pid: int):
@@ -357,25 +451,35 @@ def upsert_medicion(pid, fecha, rutina_pdf, plan_pdf):
 
 
 def save_image(file, pid: int, fecha_str: str):
-    # sube a Drive en vez de disco
-    pf = df_sql("SELECT drive_folder_id, nombre FROM pacientes WHERE id=%s", (pid,))
-    if pf.empty or not (pf["drive_folder_id"].iloc[0] or "").strip():
-        raise RuntimeError("Este paciente no tiene carpeta de Drive asignada.")
+    """Sube la foto a la subcarpeta de la cita y la registra en DB."""
+    drive = get_drive()
+    folder_id = ensure_cita_folder(pid, fecha_str.strip())  # subcarpeta YYYY-MM-DD
 
-    folder_id = (pf["drive_folder_id"].iloc[0] or "").strip()
-    filename = file.name
+    # Siguiente índice según cuántas fotos hay ya en esa fecha
+    ya = df_sql("""
+        SELECT COUNT(*)::int
+        FROM fotos
+        WHERE paciente_id=%s AND fecha=%s
+    """, (pid, fecha_str))
+    n = int(ya.iloc[0, 0]) + 1
+
+    ext = _ext_of(file.name, ".jpg")
+    base = f"{fecha_str.strip()}_foto_{n:03d}{ext}"
+    target_name = _ensure_unique_name(drive, folder_id, _slugify(base))
+
     mime = file.type or "image/jpeg"
-
-    f = upload_image_to_folder(file.read(), filename, folder_id, mime)
+    f = upload_image_to_folder(file.read(), target_name, folder_id, mime)  # ya tienes esta función nube
     file_id = f["id"]
     web_link = f["webViewLink"]
 
     exec_sql("""
         INSERT INTO fotos (paciente_id, fecha, filepath, drive_file_id, web_view_link, filename)
         VALUES (%s,%s,%s,%s,%s,%s)
-    """, (pid, fecha_str, None, file_id, web_link, filename))
+    """, (pid, fecha_str, None, file_id, web_link, target_name))
 
     return file_id
+
+
 
 
 def to_drive_preview(url: str) -> str:
@@ -539,32 +643,64 @@ if role == "admin":
 
     # === Subida directa a Google Drive (PDFs) ===
     pf = df_sql("SELECT drive_folder_id FROM pacientes WHERE id=%s", (pid,))
-    folder_id = (pf["drive_folder_id"].iloc[0] or "").strip() if not pf.empty else ""
+    tiene_carpeta = (not pf.empty) and bool((pf["drive_folder_id"].iloc[0] or "").strip())
 
     st.markdown("### ⬆️ Subir PDFs a la carpeta de Drive del paciente")
-    if not folder_id:
-        st.warning("Primero asigna la carpeta de Drive del paciente en la pestaña **🧾 Perfil**.")
+    if not tiene_carpeta:
+        st.warning("Este paciente aún no tiene carpeta de Drive. Crea/asegura la carpeta desde '➕ Nuevo paciente'.")
     else:
-        fecha_sel = st.text_input("Fecha para asociar los PDFs (YYYY-MM-DD)", value=str(date.today()),
+        # Usaremos subcarpeta por cita: YYYY-MM-DD
+        fecha_pdf = st.text_input("Fecha para asociar los PDFs (YYYY-MM-DD)", value=str(date.today()),
                                   key=f"fecha_pdf_{pid}")
-        up_r = st.file_uploader("Subir **Rutina (PDF)**", type=["pdf"], key=f"up_r_{pid}")
-        up_p = st.file_uploader("Subir **Plan alimenticio (PDF)**", type=["pdf"], key=f"up_p_{pid}")
+
+        col_u1, col_u2 = st.columns(2)
+        with col_u1:
+            up_rutina = st.file_uploader("Seleccionar **Rutina (PDF)**", type=["pdf"], key=f"up_rutina_{pid}")
+        with col_u2:
+            up_plan = st.file_uploader("Seleccionar **Plan alimenticio (PDF)**", type=["pdf"], key=f"up_plan_{pid}")
+
         b1, b2 = st.columns(2)
         with b1:
-            if up_r and st.button("⬆️ Subir Rutina a Drive"):
+            if up_rutina and st.button("⬆️ Subir Rutina a Drive", key=f"btn_rutina_{pid}"):
                 with st.spinner("Subiendo Rutina a Drive..."):
-                    f = upload_pdf_to_folder(up_r.read(), up_r.name, folder_id)
-                    upsert_medicion(pid, fecha_sel.strip(), f["webViewLink"], None)
+                    cita_folder = ensure_cita_folder(pid, fecha_pdf.strip())  # subcarpeta YYYY-MM-DD
+                    drive = get_drive()
+
+                    ext = _ext_of(up_rutina.name, ".pdf")
+                    target_name = _ensure_unique_name(
+                        drive, cita_folder,
+                        _slugify(f"{fecha_pdf.strip()}_rutina{ext}")
+                    )
+
+                    pdf = upload_pdf_to_folder(up_rutina.read(), target_name, cita_folder)
+                    exec_sql("""
+                             INSERT INTO mediciones (paciente_id, fecha, rutina_pdf)
+                             VALUES (%s, %s, %s) ON CONFLICT (paciente_id, fecha)
+                        DO
+                             UPDATE SET rutina_pdf = EXCLUDED.rutina_pdf
+                             """, (pid, fecha_pdf.strip(), pdf["webViewLink"]))
                     st.success("Rutina subida y enlazada ✅");
                     st.rerun()
+
         with b2:
-            if up_p and st.button("⬆️ Subir Plan a Drive"):
+            if up_plan and st.button("⬆️ Subir Plan a Drive", key=f"btn_plan_{pid}"):
                 with st.spinner("Subiendo Plan a Drive..."):
-                    f = upload_pdf_to_folder(up_p.read(), up_p.name, folder_id)
-                    exec_sql("""INSERT INTO mediciones (paciente_id, fecha, rutina_pdf, plan_pdf)
-                                VALUES (%s, %s, %s, %s) ON CONFLICT (paciente_id, fecha) DO
-                    UPDATE SET plan_pdf = EXCLUDED.plan_pdf""",
-                             (pid, fecha_sel.strip(), None, f["webViewLink"]))
+                    cita_folder = ensure_cita_folder(pid, fecha_pdf.strip())
+                    drive = get_drive()
+
+                    ext = _ext_of(up_plan.name, ".pdf")
+                    target_name = _ensure_unique_name(
+                        drive, cita_folder,
+                        _slugify(f"{fecha_pdf.strip()}_plan{ext}")
+                    )
+
+                    pdf = upload_pdf_to_folder(up_plan.read(), target_name, cita_folder)
+                    exec_sql("""
+                             INSERT INTO mediciones (paciente_id, fecha, plan_pdf)
+                             VALUES (%s, %s, %s) ON CONFLICT (paciente_id, fecha)
+                        DO
+                             UPDATE SET plan_pdf = EXCLUDED.plan_pdf
+                             """, (pid, fecha_pdf.strip(), pdf["webViewLink"]))
                     st.success("Plan subido y enlazado ✅");
                     st.rerun()
 
@@ -802,12 +938,12 @@ if role == "admin":
 
     # --- Fotos ---
     with tab_fotos:
-        st.caption("Sube fotos asociadas a una fecha (YYYY-MM-DD).")
-        colA, colB = st.columns([2,1])
+        st.caption("Sube fotos asociadas a una **cita/fecha** (formato YYYY-MM-DD).")
+        colA, colB = st.columns([2, 1])
         with colA:
             fecha_f = st.text_input("Fecha", value=str(date.today()))
             up = st.file_uploader("Agregar fotos", accept_multiple_files=True,
-                                  type=["jpg","jpeg","png","webp"])
+                                  type=["jpg", "jpeg", "png", "webp"])
         with colB:
             if st.button("⬆️ Subir"):
                 if not up:
@@ -815,7 +951,8 @@ if role == "admin":
                 else:
                     for f in up:
                         save_image(f, pid, fecha_f.strip())
-                    st.success("Fotos subidas ✅"); st.rerun()
+                    st.success("Fotos subidas ✅");
+                    st.rerun()
 
         gal = df_sql("""
                      SELECT id, fecha, filepath, drive_file_id
