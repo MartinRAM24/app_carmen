@@ -649,17 +649,17 @@ elif role == "paciente":
     st.markdown("### 📏 Tus mediciones")
     hist_ro = df_sql("""
                      SELECT fecha,
-                            peso_kg     AS peso,
+                            peso_kg     AS peso_KG,
                             grasa_pct   AS grasa,
                             musculo_pct AS musculo,
-                            brazo_rest,
-                            brazo_flex,
-                            pecho_rest,
-                            pecho_flex,
-                            cintura_cm  AS cintura,
-                            cadera_cm   AS cadera,
-                            pierna_cm   AS pierna,
-                            pantorrilla_cm AS pantorrilla,
+                            brazo_rest AS brazo_rest_CM,
+                            brazo_flex AS brazo_flex_CM,
+                            pecho_rest AS pecho_rest_CM,
+                            pecho_flex AS pecho_flex_CM,
+                            cintura_cm  AS cintura_CM,
+                            cadera_cm   AS cadera_CM,
+                            pierna_cm   AS pierna_CM,
+                            pantorrilla_cm AS pantorrilla_CM,
                             notas
                      FROM mediciones
                      WHERE paciente_id = %s
