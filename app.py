@@ -143,15 +143,21 @@ def ensure_patient_folder(nombre: str, pid: int) -> str:
 
     # 3) Busca si ya existe una carpeta para el paciente (evita duplicados)
     folder_name = f"{pid:05d} - {nombre}"
+
+    # 1. Escapa solo comillas simples para el query de Drive:  O'Connor -> O\'Connor
+    escaped = folder_name.replace("'", "\\'")
+
+    # 2. Construye el query legible (usa comillas dobles afuera)
     query = (
         "mimeType='application/vnd.google-apps.folder' "
         "and trashed=false "
-        f"and name='{folder_name.replace(\"'\", \"\\'\")}' "
+        f"and name='{escaped}' "
         f"and '{root_id}' in parents"
     )
+
     res = drive.files().list(
         q=query,
-        fields="files(id,name)",
+        fields="files(id,name,parents)",  # <- corrige 'fields' (sin S extra)
         pageSize=1,
         supportsAllDrives=True,
         includeItemsFromAllDrives=True,
