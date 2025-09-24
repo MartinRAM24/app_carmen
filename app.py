@@ -176,16 +176,6 @@ def extract_drive_folder_id(url_or_id: str) -> str | None:
     if re.fullmatch(r"[A-Za-z0-9_-]{10,}", s): return s
     return None
 
-def ensure_patient_folder(nombre: str, pid: int) -> str:
-    """Crea carpeta del paciente bajo la raíz si no existe."""
-    drive = get_drive()
-    root_id = st.secrets["drive"]["patients_root_folder_id"]
-    folder_name = f"{pid:05d} - {nombre}"
-    meta = {"name": folder_name, "mimeType": "application/vnd.google-apps.folder", "parents": [root_id]}
-    # crear
-    f = drive.files().create(body=meta, fields="id").execute()
-    return f["id"]
-
 def make_anyone_reader(file_id: str):
     drive = get_drive()
     drive.permissions().create(fileId=file_id, body={"type": "anyone", "role": "reader"}).execute()
