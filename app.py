@@ -299,7 +299,7 @@ if role == "admin":
         pac_sel = st.selectbox("Paciente", lista["nombre"].tolist(), key="adm_pac")
         pid = int(lista.loc[lista["nombre"] == pac_sel, "id"].iloc[0])
 
-    for i, row in pacientes.iterrows():
+    for i, row in lista.iterrows():
         col1, col2 = st.columns([4, 1])
         with col1:
             st.write(f"👤 {row['nombre']} (id={row['id']})")
