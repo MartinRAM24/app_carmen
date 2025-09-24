@@ -177,9 +177,14 @@ def get_or_create_token(pid: int):
         exec_sql("UPDATE pacientes SET token = %s WHERE id = %s", (tok, pid))
     return tok
 
-def buscar_pacientes(filtro=""):
-    return df_sql("SELECT id, nombre FROM pacientes WHERE nombre LIKE %s ORDER BY nombre",
-                  (f"%{filtro}%",))
+@st.cache_data(ttl=30)
+def buscar_pacientes(filtro: str):
+    if not filtro:
+        return pd.DataFrame(columns=["id", "nombre"])
+    return df_sql(
+        "SELECT id, nombre FROM pacientes WHERE nombre ILIKE %s ORDER BY nombre",
+        (f"%{filtro}%",)
+    )
 
 def query_mediciones(pid):
     return df_sql("""
@@ -288,42 +293,65 @@ if role == "admin":
                 st.success("Paciente creado ✅"); st.rerun()
         nuevo_paciente()
 
-    c1, c2 = st.columns([2,1])
-    with c1:
-        filtro = st.text_input("Buscar paciente")
-        lista = buscar_pacientes(filtro)
-        if lista.empty:
-            st.info("No hay pacientes. Crea uno con '➕ Nuevo paciente'.")
-            st.stop()
-        pac_sel = st.selectbox("Paciente", lista["nombre"].tolist(), key="adm_pac")
-        pid = int(lista.loc[lista["nombre"] == pac_sel, "id"].iloc[0])
+    # --- Búsqueda controlada (no lista nada por defecto) ---
+    with st.form("form_buscar_paciente"):
+        filtro = st.text_input("Buscar paciente", placeholder="Ej. Ana, Juan…")
+        do_search = st.form_submit_button("Buscar")
 
-    for i, row in lista.iterrows():
-        col1, col2 = st.columns([4, 1])
-        with col1:
-            st.write(f"👤 {row['nombre']} (id={row['id']})")
-        with col2:
-            if st.button("🗑️ Eliminar", key=f"del_{row['id']}"):
-                st.session_state["_delete_pid"] = row["id"]
+    # Ejecutar búsqueda sólo al hacer submit
+    if do_search:
+        if len(filtro.strip()) < 2:
+            st.warning("Escribe al menos 2 letras para buscar.")
+        else:
+            st.session_state["buscados_df"] = buscar_pacientes(filtro.strip())
 
-    # Confirmación
-    if "_delete_pid" in st.session_state:
-        pid = st.session_state["_delete_pid"]
-        st.error("⚠️ ¿Seguro que quieres eliminar este paciente y todos sus datos?")
-        c1, c2 = st.columns(2)
+    # resultados almacenados tras buscar
+    buscados = st.session_state.get("buscados_df", pd.DataFrame(columns=["id", "nombre"]))
+
+    if not buscados.empty:
+        st.markdown("#### Resultados")
+        c1, c2 = st.columns([2, 1])
         with c1:
-            if st.button("❌ Cancelar", key="cancel_del"):
-                del st.session_state["_delete_pid"]
-        with c2:
-            if st.button("✅ Sí, eliminar", key="confirm_del"):
-                delete_paciente(pid)
-                del st.session_state["_delete_pid"]
-                st.rerun()
+            pac_sel = st.selectbox("Paciente", buscados["nombre"].tolist(), key="adm_pac")
+            pid = int(buscados.loc[buscados["nombre"] == pac_sel, "id"].iloc[0])
 
-    with c2:
-        if st.button("🔗 Copiar link del portal del paciente"):
-            tok = get_or_create_token(pid)
-            st.code(f"http://localhost:8501/?token={tok}", language="text")
+            # botón eliminar
+            if st.button("🗑️ Eliminar", key=f"del_{pid}"):
+                st.session_state["_del_pid"] = pid
+                st.session_state["_del_name"] = pac_sel
+
+            # confirmación en diálogo
+            if st.session_state.get("_del_pid") is not None:
+                @st.dialog("Confirmar eliminación")
+                def _confirm_delete_dialog():
+                    st.warning(
+                        f"Se eliminará **{st.session_state['_del_name']}** y todos sus datos (mediciones y fotos).")
+                    d1, d2 = st.columns(2)
+                    with d1:
+                        if st.button("❌ Cancelar"):
+                            st.session_state.pop("_del_pid", None)
+                            st.session_state.pop("_del_name", None)
+                    with d2:
+                        if st.button("✅ Sí, eliminar"):
+                            delete_paciente(st.session_state["_del_pid"])
+                            st.session_state.pop("_del_pid", None)
+                            st.session_state.pop("_del_name", None)
+                            st.cache_data.clear()
+                            st.session_state["buscados_df"] = buscar_pacientes(filtro.strip())
+                            st.rerun()
+
+
+                _confirm_delete_dialog()
+
+        with c2:
+            if st.button("🔗 Copiar link del portal del paciente", use_container_width=True):
+                tok = get_or_create_token(pid)
+                st.code(f"http://localhost:8501/?token={tok}", language="text")
+    else:
+        st.caption("Escribe arriba y pulsa **Buscar** para ver resultados.")
+        # si no hay resultados, evita usar pid más abajo
+        # puedes hacer un return o un st.stop() si quieres bloquear los tabs
+        st.stop()
 
     tab_info, tab_medidas, tab_pdfs, tab_fotos = st.tabs(["🧾 Perfil", "📏 Mediciones", "📂 PDFs", "🖼️ Fotos"])
 
