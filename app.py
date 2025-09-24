@@ -34,11 +34,6 @@ def exec_sql(q_ps: str, p: tuple = ()):
 def df_sql(q_ps: str, p: tuple = ()):
     return pd.read_sql_query(q_ps, conn(), params=p)
 
-def query_df(sql: str, params: tuple = ()):
-    # pandas espera 'params' (tupla); psycopg3 funciona directo
-    with conn() as c:
-        return pd.read_sql_query(sql, c, params=params)
-
 
 
 # =========================
