@@ -117,7 +117,7 @@ ensure_mediciones_columns()
 
 def delete_paciente(pid: int):
     # 1) Borrar fotos físicas del disco (si existen)
-    fotos = query_df("SELECT filepath FROM fotos WHERE paciente_id = %s", (pid,))
+    fotos = query_df("SELECT filepath FROM fotos WHERE paciente_id = %s" (pid,))
     for _, row in fotos.iterrows():
         path = row["filepath"]
         try:
@@ -127,11 +127,11 @@ def delete_paciente(pid: int):
             st.warning(f"No se pudo borrar {path}: {e}")
 
     # 2) Borrar registros dependientes
-    exec_sql("DELETE FROM fotos WHERE paciente_id = %s", (pid,))
-    exec_sql("DELETE FROM mediciones WHERE paciente_id = %s", (pid,))
+    exec_sql("DELETE FROM fotos WHERE paciente_id = %s" (pid,))
+    exec_sql("DELETE FROM mediciones WHERE paciente_id = %s" (pid,))
 
     # 3) Borrar paciente
-    exec_sql("DELETE FROM pacientes WHERE id = %s", (pid,))
+    exec_sql("DELETE FROM pacientes WHERE id = %s" (pid,))
 
     st.success("Paciente eliminado ✅")
 
