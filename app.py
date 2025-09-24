@@ -119,12 +119,60 @@ def ensure_mediciones_columns():
         add_col_if_missing("mediciones", col, typ)
 
 @st.cache_resource
-def get_drive():
-    creds = service_account.Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"],
-        scopes=["https://www.googleapis.com/auth/drive"]
+def ensure_patient_folder(nombre: str, pid: int) -> str:
+    """Busca (o crea) la carpeta del paciente bajo la raíz configurada."""
+    drive = get_drive()
+
+    # 1) Resuelve ID real aunque el secret sea URL
+    root_raw = st.secrets["drive"]["patients_root_folder_id"]
+    root_id = extract_drive_folder_id(root_raw)
+    if not root_id:
+        raise RuntimeError("drive.patients_root_folder_id inválido (no es URL/ID de carpeta).")
+
+    # 2) Verifica que la service account tenga acceso a la raíz
+    try:
+        drive.files().get(
+            fileId=root_id,
+            fields="id,name",
+            supportsAllDrives=True
+        ).execute()
+    except Exception as e:
+        st.error("La service account no tiene acceso a la carpeta raíz de pacientes. "
+                 "Compártela con el correo de la service account como 'Content manager'.")
+        raise
+
+    # 3) Busca si ya existe una carpeta para el paciente (evita duplicados)
+    folder_name = f"{pid:05d} - {nombre}"
+    query = (
+        "mimeType='application/vnd.google-apps.folder' "
+        "and trashed=false "
+        f"and name='{folder_name.replace(\"'\", \"\\'\")}' "
+        f"and '{root_id}' in parents"
     )
-    return build("drive", "v3", credentials=creds)
+    res = drive.files().list(
+        q=query,
+        fields="files(id,name)",
+        pageSize=1,
+        supportsAllDrives=True,
+        includeItemsFromAllDrives=True,
+    ).execute()
+    files = res.get("files", [])
+    if files:
+        return files[0]["id"]
+
+    # 4) Crear la carpeta si no existe
+    meta = {
+        "name": folder_name,
+        "mimeType": "application/vnd.google-apps.folder",
+        "parents": [root_id],
+    }
+    folder = drive.files().create(
+        body=meta,
+        fields="id,name,parents,webViewLink",
+        supportsAllDrives=True,
+    ).execute()
+    return folder["id"]
+
 
 def extract_drive_folder_id(url_or_id: str) -> str | None:
     if not url_or_id:
@@ -153,17 +201,28 @@ def upload_pdf_to_folder(file_bytes: bytes, filename: str, folder_id: str) -> di
     drive = get_drive()
     media = MediaIoBaseUpload(io.BytesIO(file_bytes), mimetype="application/pdf", resumable=False)
     meta = {"name": filename, "parents": [folder_id]}
-    f = drive.files().create(body=meta, media_body=media, fields="id,webViewLink").execute()
+    f = drive.files().create(
+        body=meta,
+        media_body=media,
+        fields="id,webViewLink",
+        supportsAllDrives=True,
+    ).execute()
     make_anyone_reader(f["id"])
-    return f  # {'id':..., 'webViewLink':...}
+    return f
 
 def upload_image_to_folder(file_bytes: bytes, filename: str, folder_id: str, mime: str) -> dict:
     drive = get_drive()
     media = MediaIoBaseUpload(io.BytesIO(file_bytes), mimetype=mime, resumable=False)
     meta = {"name": filename, "parents": [folder_id]}
-    f = drive.files().create(body=meta, media_body=media, fields="id,webViewLink").execute()
+    f = drive.files().create(
+        body=meta,
+        media_body=media,
+        fields="id,webViewLink",
+        supportsAllDrives=True,
+    ).execute()
     make_anyone_reader(f["id"])
     return f
+
 
 def drive_image_view_url(file_id: str) -> str:
     # URL directa para <img>
@@ -468,6 +527,7 @@ if role == "admin":
         # si no hay resultados, evita usar pid más abajo
         # puedes hacer un return o un st.stop() si quieres bloquear los tabs
         st.stop()
+
     # === Subida directa a Google Drive (PDFs) ===
     pf = df_sql("SELECT drive_folder_id FROM pacientes WHERE id=%s", (pid,))
     folder_id = (pf["drive_folder_id"].iloc[0] or "").strip() if not pf.empty else ""
@@ -476,6 +536,8 @@ if role == "admin":
     if not folder_id:
         st.warning("Primero asigna la carpeta de Drive del paciente en la pestaña **🧾 Perfil**.")
     else:
+        fecha_sel = st.text_input("Fecha para asociar los PDFs (YYYY-MM-DD)", value=str(date.today()),
+                                  key=f"fecha_pdf_{pid}")
         up_r = st.file_uploader("Subir **Rutina (PDF)**", type=["pdf"], key=f"up_r_{pid}")
         up_p = st.file_uploader("Subir **Plan alimenticio (PDF)**", type=["pdf"], key=f"up_p_{pid}")
         b1, b2 = st.columns(2)
@@ -483,7 +545,7 @@ if role == "admin":
             if up_r and st.button("⬆️ Subir Rutina a Drive"):
                 with st.spinner("Subiendo Rutina a Drive..."):
                     f = upload_pdf_to_folder(up_r.read(), up_r.name, folder_id)
-                    upsert_medicion(pid, fecha_sel, f["webViewLink"], None)
+                    upsert_medicion(pid, fecha_sel.strip(), f["webViewLink"], None)
                     st.success("Rutina subida y enlazada ✅");
                     st.rerun()
         with b2:
@@ -492,9 +554,8 @@ if role == "admin":
                     f = upload_pdf_to_folder(up_p.read(), up_p.name, folder_id)
                     exec_sql("""INSERT INTO mediciones (paciente_id, fecha, rutina_pdf, plan_pdf)
                                 VALUES (%s, %s, %s, %s) ON CONFLICT (paciente_id, fecha) DO
-                    UPDATE
-                        SET plan_pdf = EXCLUDED.plan_pdf""",
-                             (pid, fecha_sel, None, f["webViewLink"]))
+                    UPDATE SET plan_pdf = EXCLUDED.plan_pdf""",
+                             (pid, fecha_sel.strip(), None, f["webViewLink"]))
                     st.success("Plan subido y enlazado ✅");
                     st.rerun()
 
