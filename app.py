@@ -118,66 +118,59 @@ def ensure_mediciones_columns():
     for col, typ in needed:
         add_col_if_missing("mediciones", col, typ)
 
+SCOPES = ["https://www.googleapis.com/auth/drive"]
+
+def get_drive():
+    """Crea el cliente de Drive usando st.secrets o JSON local."""
+    # Opción A: Streamlit Cloud (recomendado)
+    if "google_service_account" in st.secrets:
+        info = dict(st.secrets["google_service_account"])
+        creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
+    else:
+        # Opción B: local con archivo JSON (ajusta la ruta si lo usas)
+        from google.oauth2.service_account import Credentials
+        SERVICE_ACCOUNT_FILE = "secrets/credenciales.json"
+        creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+    return build("drive", "v3", credentials=creds)
+
+# Si usas una carpeta raíz en Drive para todos los pacientes
+ROOT_FOLDER_ID = st.secrets.get("DRIVE_ROOT_FOLDER_ID")  # puede ser None
+
 @st.cache_resource
 def ensure_patient_folder(nombre: str, pid: int) -> str:
-    """Busca (o crea) la carpeta del paciente bajo la raíz configurada."""
     drive = get_drive()
 
-    # 1) Resuelve ID real aunque el secret sea URL
-    root_raw = st.secrets["drive"]["patients_root_folder_id"]
-    root_id = extract_drive_folder_id(root_raw)
-    if not root_id:
-        raise RuntimeError("drive.patients_root_folder_id inválido (no es URL/ID de carpeta).")
+    # 1) Validar root opcional
+    parent = ROOT_FOLDER_ID
 
-    # 2) Verifica que la service account tenga acceso a la raíz
-    try:
-        drive.files().get(
-            fileId=root_id,
-            fields="id,name",
-            supportsAllDrives=True
-        ).execute()
-    except Exception as e:
-        st.error("La service account no tiene acceso a la carpeta raíz de pacientes. "
-                 "Compártela con el correo de la service account como 'Content manager'.")
-        raise
-
-    # 3) Busca si ya existe una carpeta para el paciente (evita duplicados)
+    # 2) Nombre y query
     folder_name = f"{pid:05d} - {nombre}"
-
-    # 1. Escapa solo comillas simples para el query de Drive:  O'Connor -> O\'Connor
     escaped = folder_name.replace("'", "\\'")
-
-    # 2. Construye el query legible (usa comillas dobles afuera)
-    query = (
-        "mimeType='application/vnd.google-apps.folder' "
-        "and trashed=false "
+    q = (
+        "mimeType='application/vnd.google-apps.folder' and trashed=false "
         f"and name='{escaped}' "
-        f"and '{root_id}' in parents"
+        + (f"and '{parent}' in parents" if parent else "")
     )
 
     res = drive.files().list(
-        q=query,
-        fields="files(id,name,parents)",  # <- corrige 'fields' (sin S extra)
-        pageSize=1,
-        supportsAllDrives=True,
-        includeItemsFromAllDrives=True,
+        q=q, fields="files(id,name,parents)", pageSize=1,
+        supportsAllDrives=True, includeItemsFromAllDrives=True
     ).execute()
     files = res.get("files", [])
     if files:
         return files[0]["id"]
 
-    # 4) Crear la carpeta si no existe
-    meta = {
-        "name": folder_name,
-        "mimeType": "application/vnd.google-apps.folder",
-        "parents": [root_id],
-    }
+    meta = {"name": folder_name, "mimeType": "application/vnd.google-apps.folder"}
+    if parent:
+        meta["parents"] = [parent]
+
     folder = drive.files().create(
         body=meta,
         fields="id,name,parents,webViewLink",
-        supportsAllDrives=True,
+        supportsAllDrives=True
     ).execute()
     return folder["id"]
+
 
 
 def extract_drive_folder_id(url_or_id: str) -> str | None:
