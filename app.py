@@ -101,15 +101,17 @@ def add_col_if_missing(table: str, col: str, coldef: str):
         exec_sql(f'ALTER TABLE {table} ADD COLUMN {col} {coldef}')
 from googleapiclient.errors import HttpError
 
+SCOPES = ["https://www.googleapis.com/auth/drive"]
+
 def get_drive():
     """Devuelve cliente de Google Drive usando secrets en la nube"""
     info = dict(st.secrets["gcp_service_account"])
     creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
     return build("drive", "v3", credentials=creds)
 
+# Carpeta raíz en Drive donde se crearán las subcarpetas de pacientes
+ROOT_FOLDER_ID = st.secrets.get("DRIVE_ROOT_FOLDER_ID")  # ID de la carpeta en tus secrets
 
-# Si usas una carpeta raíz en Drive para todos los pacientes
-ROOT_FOLDER_ID = st.secrets.get("DRIVE_ROOT_FOLDER_ID")
 
 def debug_root_access():
     st.write("SA:", st.secrets["gcp_service_account"]["client_email"])
