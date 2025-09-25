@@ -14,44 +14,6 @@ from googleapiclient.errors import HttpError
 
 st.set_page_config(page_title="Pacientes", page_icon="🩺", layout="wide")
 
-# === Fondo desde Google Drive ===
-drive_file_id = "1mWhvlRxhxGtoxi9SXVeWx6pg_EnvqSqP"
-# Alternativa (a veces carga más rápido):
-bg_url = f"https://lh3.googleusercontent.com/d/{drive_file_id}=s0"
-
-st.markdown(f"""
-<style>
-/* Fondo del área principal */
-[data-testid="stAppViewContainer"] > .main {{
-  background-image: url('{bg_url}') !important;
-  background-size: cover !important;
-  background-position: center center !important;
-  background-attachment: fixed !important;
-}}
-
-/* Fondo general (fallback) */
-.stApp {{
-  background: transparent !important;
-}}
-
-/* Opcional: oscurecer un poco para que el texto se lea mejor */
-[data-testid="stAppViewContainer"] > .main:before {{
-  content: "";
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.35);
-  pointer-events: none;
-  z-index: 0;
-}}
-
-/* Asegura que el contenido quede por encima del overlay */
-.block-container {{
-  position: relative;
-  z-index: 1;
-}}
-</style>
-""", unsafe_allow_html=True)
-
 
 # =========================
 # Config media local (nota: en cloud puede ser efímero)
