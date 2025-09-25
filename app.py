@@ -4,13 +4,13 @@ import os, uuid, hashlib, traceback
 import pandas as pd
 from datetime import date
 import psycopg
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 import io, re
-from googleapiclient.errors import HttpError
 from pathlib import Path
-
+from google.oauth2.credentials import Credentials
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 st.set_page_config(page_title="Pacientes", page_icon="🩺", layout="wide")
 
@@ -101,15 +101,28 @@ def add_col_if_missing(table: str, col: str, coldef: str):
     """, (table, col))
     if exists.empty:
         exec_sql(f'ALTER TABLE {table} ADD COLUMN {col} {coldef}')
-from googleapiclient.errors import HttpError
+
 
 SCOPES = ["https://www.googleapis.com/auth/drive"]
 
 def get_drive():
-    """Devuelve cliente de Google Drive usando secrets en la nube"""
-    info = dict(st.secrets["gcp_service_account"])
-    creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
-    return build("drive", "v3", credentials=creds)
+    # 1) Si hay OAuth, lo usamos (archivos serán del usuario y con su cuota)
+    if "google_oauth" in st.secrets:
+        info = st.secrets["google_oauth"]
+        creds = Credentials(
+            token=None,
+            refresh_token=info["refresh_token"],
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=info["client_id"],
+            client_secret=info["client_secret"],
+            scopes=SCOPES,
+        )
+        return build("drive", "v3", credentials=creds)
+
+    # 2) Si no hay OAuth, usa Service Account (sin cuota; útil para listar/crear carpetas, no para subir)
+    info_sa = dict(st.secrets["gcp_service_account"])
+    creds_sa = service_account.Credentials.from_service_account_info(info_sa, scopes=SCOPES)
+    return build("drive", "v3", credentials=creds_sa)
 
 # Carpeta raíz en Drive donde se crearán las subcarpetas de pacientes
 ROOT_FOLDER_ID = st.secrets.get("DRIVE_ROOT_FOLDER_ID")  # ID de la carpeta en tus secrets
@@ -153,8 +166,6 @@ def ensure_mediciones_columns():
     ]
     for col, typ in needed:
         add_col_if_missing("mediciones", col, typ)
-
-SCOPES = ["https://www.googleapis.com/auth/drive"]
 
  # puede ser None
 
@@ -283,6 +294,14 @@ def delete_drive_file(file_id: str):
 
 setup_db()
 ensure_mediciones_columns()
+
+
+try:
+    exec_sql("ALTER TABLE fotos ALTER COLUMN filepath DROP NOT NULL")
+except Exception:
+    pass
+
+
 
 # columnas nuevas para Drive
 add_col_if_missing("pacientes", "drive_folder_id", "TEXT")
@@ -581,6 +600,13 @@ if patient_login:
 role = st.session_state.role
 
 # ---------- ADMIN ----------
+if "google_oauth" not in st.secrets:
+    st.warning(
+        "⚠️ Actualmente se está usando **Service Account**. "
+        "Esto puede dar error de `storageQuotaExceeded` al subir archivos. "
+        "Recomendado: configurar OAuth o usar una Unidad Compartida en Drive."
+    )
+
 if role == "admin":
     st.subheader("👩‍⚕️ Vista de administración (Carmen)")
     if st.button("➕ Nuevo paciente"):
@@ -1110,20 +1136,31 @@ elif role == "paciente":
     else:
         st.dataframe(hist_ro, use_container_width=True, hide_index=True)
 
+    # --- Fotos (solo lectura del paciente) ---
     st.markdown("### 🖼️ Tus fotos")
     gal = df_sql("""
-                 SELECT fecha, filepath, drive_file_id
+                 SELECT fecha, drive_file_id, filepath, filename
                  FROM fotos
                  WHERE paciente_id = %s
                  ORDER BY fecha DESC
                  """, (int(pac["id"]),))
 
-    # dentro del loop:
-    if r["drive_file_id"]:
-        img_url = drive_image_view_url(r["drive_file_id"])
-        st.image(img_url, use_container_width=True)
+    if gal.empty:
+        st.info("Sin fotos aún.")
     else:
-        st.image(r["filepath"], use_container_width=True)
+        for fch in sorted(gal["fecha"].unique(), reverse=True):
+            st.markdown(f"#### 📅 {fch}")
+            fila = gal[gal["fecha"] == fch]
+            cols = st.columns(4)
+            for idx, rr in fila.iterrows():
+                with cols[idx % 4]:
+                    if rr.get("drive_file_id"):
+                        img_url = drive_image_view_url(rr["drive_file_id"])
+                        st.image(img_url, use_container_width=True)
+                        st.link_button("⬇️ Descargar", drive_image_download_url(rr["drive_file_id"]))
+                    elif rr.get("filepath"):
+                        st.image(rr["filepath"], use_container_width=True)
+
 
 
 else:
