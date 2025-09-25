@@ -14,30 +14,44 @@ from googleapiclient.errors import HttpError
 
 st.set_page_config(page_title="Pacientes", page_icon="🩺", layout="wide")
 
-# === Fondo con imagen de Drive ===
+# === Fondo desde Google Drive ===
 drive_file_id = "1mWhvlRxhxGtoxi9SXVeWx6pg_EnvqSqP"
 bg_url = f"https://drive.google.com/uc?export=view&id={drive_file_id}"
+# Alternativa (a veces carga más rápido):
+# bg_url = f"https://lh3.googleusercontent.com/d/{drive_file_id}=s0"
 
-page_bg = f"""
+st.markdown(f"""
 <style>
-[data-testid="stAppViewContainer"] {{
-    background: url("{bg_url}");
-    background-size: cover;
-    background-repeat: no-repeat;
-    background-attachment: fixed;
+/* Fondo del área principal */
+[data-testid="stAppViewContainer"] > .main {{
+  background-image: url('{bg_url}') !important;
+  background-size: cover !important;
+  background-position: center center !important;
+  background-attachment: fixed !important;
 }}
 
-[data-testid="stHeader"] {{
-    background: rgba(0,0,0,0);
+/* Fondo general (fallback) */
+.stApp {{
+  background: transparent !important;
 }}
 
-[data-testid="stSidebar"] {{
-    background-color: rgba(30,30,30,0.7);
+/* Opcional: oscurecer un poco para que el texto se lea mejor */
+[data-testid="stAppViewContainer"] > .main:before {{
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.35);
+  pointer-events: none;
+  z-index: 0;
+}}
+
+/* Asegura que el contenido quede por encima del overlay */
+.block-container {{
+  position: relative;
+  z-index: 1;
 }}
 </style>
-"""
-
-st.markdown(page_bg, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 
 # =========================
