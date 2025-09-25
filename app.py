@@ -217,7 +217,16 @@ def extract_drive_folder_id(url_or_id: str) -> str | None:
 
 def make_anyone_reader(file_id: str):
     drive = get_drive()
-    drive.permissions().create(fileId=file_id, body={"type": "anyone", "role": "reader"}).execute()
+    try:
+        drive.permissions().create(
+            fileId=file_id,
+            body={"type": "anyone", "role": "reader"},
+            fields="id",
+            supportsAllDrives=True,   # << IMPORTANTE en unidades compartidas
+        ).execute()
+    except HttpError as e:
+        st.info(f"[Drive] No pude hacer público {file_id}: {e}")
+
 
 def upload_pdf_to_folder(file_bytes: bytes, filename: str, folder_id: str) -> dict:
     drive = get_drive()
@@ -271,11 +280,12 @@ def upload_image_to_folder(file_bytes: bytes, filename: str, folder_id: str, mim
     f = drive.files().create(
         body=meta,
         media_body=media,
-        fields="id,webViewLink",
+        fields="id,webViewLink,thumbnailLink",
         supportsAllDrives=True,
     ).execute()
     make_anyone_reader(f["id"])
     return f
+
 
 
 def drive_image_view_url(file_id: str) -> str:
