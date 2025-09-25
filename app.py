@@ -14,6 +14,32 @@ from googleapiclient.errors import HttpError
 
 st.set_page_config(page_title="Pacientes", page_icon="🩺", layout="wide")
 
+# === Fondo con imagen de Drive ===
+drive_file_id = "1mWhvlRxhxGtoxi9SXVeWx6pg_EnvqSqP"
+bg_url = f"https://drive.google.com/uc?export=view&id={drive_file_id}"
+
+page_bg = f"""
+<style>
+[data-testid="stAppViewContainer"] {{
+    background: url("{bg_url}");
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+}}
+
+[data-testid="stHeader"] {{
+    background: rgba(0,0,0,0);
+}}
+
+[data-testid="stSidebar"] {{
+    background-color: rgba(30,30,30,0.7);
+}}
+</style>
+"""
+
+st.markdown(page_bg, unsafe_allow_html=True)
+
+
 # =========================
 # Config media local (nota: en cloud puede ser efímero)
 # =========================
