@@ -1128,7 +1128,7 @@ elif role == "paciente":
             fila = gal[gal["fecha"] == fch]
             cols = st.columns(4)
             fila = fila.reset_index(drop=True)
-            for idx, r in fila.iterrows():
+            for idx, rr in fila.iterrows():
                 with cols[idx % 4]:
                     if rr.get("drive_file_id"):
                         img_url = drive_image_view_url(rr["drive_file_id"])
