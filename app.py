@@ -286,15 +286,10 @@ def upload_image_to_folder(file_bytes: bytes, filename: str, folder_id: str, mim
     make_anyone_reader(f["id"])
     return f
 
-def drive_public_image_url(file_id: str) -> str:
-    # URL directa de imagen (mejor que uc?export=view)
-    # "=s0" pide tamaño original, puedes cambiar a "=s1200" para limitar.
-    return f"https://lh3.googleusercontent.com/d/{file_id}=s0"
-
 
 def drive_image_view_url(file_id: str) -> str:
-    # URL directa para <img>
-    return f"https://drive.google.com/uc?export=view&id={file_id}"
+    # URL directa (lh3) para mostrar imágenes de Drive
+    return f"https://lh3.googleusercontent.com/d/{file_id}=s0"
 
 def drive_image_download_url(file_id: str) -> str:
     return f"https://drive.google.com/uc?export=download&id={file_id}"
@@ -1017,21 +1012,6 @@ if role == "admin":
                     exec_sql("""UPDATE mediciones SET rutina_pdf=NULL, plan_pdf=NULL
                                 WHERE paciente_id=%s AND fecha=%s""", (pid, fecha_sel))
                     st.success("PDFs vaciados ✅"); st.rerun()
-                    
-    with st.expander("🔎 Debug fotos (temporal)"):
-        dbg = df_sql("""
-                     SELECT id, fecha, drive_file_id, filename
-                     FROM fotos
-                     WHERE paciente_id = %s
-                     ORDER BY id DESC LIMIT 10
-                     """, (pid,))
-        if not dbg.empty:
-            for _, row in dbg.iterrows():
-                fid = (row["drive_file_id"] or "").strip()
-                st.write(f"ID {row['id']} · {row['fecha']} · {row['filename']} · fid={fid}")
-                if fid:
-                    st.write("uc:", f"https://drive.google.com/uc?export=view&id={fid}")
-                    st.write("lh3:", f"https://lh3.googleusercontent.com/d/{fid}=s0")
 
     # --- Fotos ---
     with tab_fotos:
@@ -1069,7 +1049,7 @@ if role == "admin":
                     with cols[idx % 4]:
                         # si hay drive_file_id, usa URL directa de Drive; si no, usa filepath (compatibilidad)
                         if r.get("drive_file_id"):
-                            img_url = drive_public_image_url(r["drive_file_id"])
+                            img_url = drive_image_view_url(r["drive_file_id"])
                             st.image(img_url, use_container_width=True)
                             dl_url = drive_image_download_url(r["drive_file_id"])
                             c1, c2 = st.columns([1, 1])
