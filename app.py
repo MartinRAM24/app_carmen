@@ -1127,7 +1127,8 @@ elif role == "paciente":
             st.markdown(f"#### 📅 {fch}")
             fila = gal[gal["fecha"] == fch]
             cols = st.columns(4)
-            for idx, rr in fila.iterrows():
+            fila = fila.reset_index(drop=True)
+            for idx, r in fila.iterrows():
                 with cols[idx % 4]:
                     if rr.get("drive_file_id"):
                         img_url = drive_image_view_url(rr["drive_file_id"])
