@@ -718,69 +718,6 @@ if role == "admin":
         # puedes hacer un return o un st.stop() si quieres bloquear los tabs
         st.stop()
 
-    # === Subida directa a Google Drive (PDFs) ===
-    pf = df_sql("SELECT drive_folder_id FROM pacientes WHERE id=%s", (pid,))
-    tiene_carpeta = (not pf.empty) and bool((pf["drive_folder_id"].iloc[0] or "").strip())
-
-    st.markdown("### ⬆️ Subir PDFs a la carpeta de Drive del paciente")
-    if not tiene_carpeta:
-        st.warning("Este paciente aún no tiene carpeta de Drive. Crea/asegura la carpeta desde '➕ Nuevo paciente'.")
-    else:
-        # Usaremos subcarpeta por cita: YYYY-MM-DD
-        fecha_pdf = st.text_input("Fecha para asociar los PDFs (YYYY-MM-DD)", value=str(date.today()),
-                                  key=f"fecha_pdf_{pid}")
-
-        col_u1, col_u2 = st.columns(2)
-        with col_u1:
-            up_rutina = st.file_uploader("Seleccionar **Rutina (PDF)**", type=["pdf"], key=f"up_rutina_{pid}")
-        with col_u2:
-            up_plan = st.file_uploader("Seleccionar **Plan alimenticio (PDF)**", type=["pdf"], key=f"up_plan_{pid}")
-
-        b1, b2 = st.columns(2)
-        with b1:
-            if up_rutina and st.button("⬆️ Subir Rutina a Drive", key=f"btn_rutina_{pid}"):
-                with st.spinner("Subiendo Rutina a Drive..."):
-                    cita_folder = ensure_cita_folder(pid, fecha_pdf.strip())  # subcarpeta YYYY-MM-DD
-                    drive = get_drive()
-
-                    ext = _ext_of(up_rutina.name, ".pdf")
-                    target_name = _ensure_unique_name(
-                        drive, cita_folder,
-                        _slugify(f"{fecha_pdf.strip()}_rutina{ext}")
-                    )
-
-                    pdf = upload_pdf_to_folder(up_rutina.read(), target_name, cita_folder)
-                    exec_sql("""
-                             INSERT INTO mediciones (paciente_id, fecha, rutina_pdf)
-                             VALUES (%s, %s, %s) ON CONFLICT (paciente_id, fecha)
-                        DO
-                             UPDATE SET rutina_pdf = EXCLUDED.rutina_pdf
-                             """, (pid, fecha_pdf.strip(), pdf["webViewLink"]))
-                    st.success("Rutina subida y enlazada ✅");
-                    st.rerun()
-
-        with b2:
-            if up_plan and st.button("⬆️ Subir Plan a Drive", key=f"btn_plan_{pid}"):
-                with st.spinner("Subiendo Plan a Drive..."):
-                    cita_folder = ensure_cita_folder(pid, fecha_pdf.strip())
-                    drive = get_drive()
-
-                    ext = _ext_of(up_plan.name, ".pdf")
-                    target_name = _ensure_unique_name(
-                        drive, cita_folder,
-                        _slugify(f"{fecha_pdf.strip()}_plan{ext}")
-                    )
-
-                    pdf = upload_pdf_to_folder(up_plan.read(), target_name, cita_folder)
-                    exec_sql("""
-                             INSERT INTO mediciones (paciente_id, fecha, plan_pdf)
-                             VALUES (%s, %s, %s) ON CONFLICT (paciente_id, fecha)
-                        DO
-                             UPDATE SET plan_pdf = EXCLUDED.plan_pdf
-                             """, (pid, fecha_pdf.strip(), pdf["webViewLink"]))
-                    st.success("Plan subido y enlazado ✅");
-                    st.rerun()
-
     tab_info, tab_medidas, tab_pdfs, tab_fotos = st.tabs(["🧾 Perfil", "📏 Mediciones", "📂 PDFs", "🖼️ Fotos"])
 
 
@@ -955,63 +892,91 @@ if role == "admin":
 
     # --- PDFs ---
     with tab_pdfs:
+        st.caption("Sube y consulta los PDFs de cada cita (fecha en formato YYYY-MM-DD).")
+
+        # — Subida — (dentro del tab)
+        fecha_pdf = st.text_input("Fecha de la cita", value=str(date.today()), key=f"pdf_fecha_{pid}")
+
+        col_u1, col_u2 = st.columns(2)
+        with col_u1:
+            up_rutina = st.file_uploader("Seleccionar **Rutina (PDF)**", type=["pdf"], key=f"up_rutina_tab_{pid}")
+        with col_u2:
+            up_plan = st.file_uploader("Seleccionar **Plan alimenticio (PDF)**", type=["pdf"], key=f"up_plan_tab_{pid}")
+
+        b1, b2 = st.columns(2)
+        with b1:
+            if up_rutina and st.button("⬆️ Subir Rutina a Drive", key=f"btn_rutina_tab_{pid}"):
+                with st.spinner("Subiendo Rutina a Drive..."):
+                    cita_folder = ensure_cita_folder(pid, fecha_pdf.strip())  # crea/obtiene subcarpeta YYYY-MM-DD
+                    drive = get_drive()
+                    ext = _ext_of(up_rutina.name, ".pdf")
+                    target_name = _ensure_unique_name(
+                        drive, cita_folder, _slugify(f"{fecha_pdf.strip()}_rutina{ext}")
+                    )
+                    pdf = upload_pdf_to_folder(up_rutina.read(), target_name, cita_folder)
+                    exec_sql("""
+                             INSERT INTO mediciones (paciente_id, fecha, rutina_pdf)
+                             VALUES (%s, %s, %s) ON CONFLICT (paciente_id, fecha)
+                        DO
+                             UPDATE SET rutina_pdf = EXCLUDED.rutina_pdf
+                             """, (pid, fecha_pdf.strip(), pdf["webViewLink"]))
+                    st.success("Rutina subida y enlazada ✅");
+                    st.rerun()
+
+        with b2:
+            if up_plan and st.button("⬆️ Subir Plan a Drive", key=f"btn_plan_tab_{pid}"):
+                with st.spinner("Subiendo Plan a Drive..."):
+                    cita_folder = ensure_cita_folder(pid, fecha_pdf.strip())
+                    drive = get_drive()
+                    ext = _ext_of(up_plan.name, ".pdf")
+                    target_name = _ensure_unique_name(
+                        drive, cita_folder, _slugify(f"{fecha_pdf.strip()}_plan{ext}")
+                    )
+                    pdf = upload_pdf_to_folder(up_plan.read(), target_name, cita_folder)
+                    exec_sql("""
+                             INSERT INTO mediciones (paciente_id, fecha, plan_pdf)
+                             VALUES (%s, %s, %s) ON CONFLICT (paciente_id, fecha)
+                        DO
+                             UPDATE SET plan_pdf = EXCLUDED.plan_pdf
+                             """, (pid, fecha_pdf.strip(), pdf["webViewLink"]))
+                    st.success("Plan subido y enlazado ✅");
+                    st.rerun()
+
+        st.divider()
+
+        # — Consulta —
         citas = query_mediciones(pid)
-        with st.form("form_nueva_cita"):
-            st.caption("Crear/actualizar cita por fecha (formato YYYY-MM-DD)")
-            f = st.text_input("Fecha de la cita", value=str(date.today()))
-            r = st.text_input("URL Rutina (PDF)")
-            p = st.text_input("URL Plan alimenticio (PDF)")
-            sub = st.form_submit_button("Guardar/Actualizar cita")
-        if sub:
-            upsert_medicion(pid, f.strip(), r.strip() or None, p.strip() or None)
-            st.success("Cita guardada ✅"); st.rerun()
-
         if citas.empty:
-            st.info("Este paciente aún no tiene citas registradas.")
+            st.info("Este paciente aún no tiene PDFs registrados.")
         else:
-            fecha_sel = st.selectbox("Fecha de la cita", citas["fecha"].tolist(), key=f"pdfs_fecha_{pid}")
+            fecha_sel = st.selectbox("Ver PDFs de la cita", citas["fecha"].tolist(), key=f"pdfs_ver_{pid}")
             actual = citas.loc[citas["fecha"] == fecha_sel].iloc[0]
-            rutina_actual = (actual["rutina_pdf"] or "").strip()
-            plan_actual   = (actual["plan_pdf"] or "").strip()
+            r = (actual["rutina_pdf"] or "").strip()
+            p = (actual["plan_pdf"] or "").strip()
 
-            st.markdown("### 📎 Enlaces guardados")
             cL, cR = st.columns(2)
             with cL:
-                if rutina_actual:
-                    st.link_button("🔗 Rutina (PDF)", rutina_actual)
-                else:
-                    st.write("Rutina: _vacío_")
-                st.text_input("URL Rutina", rutina_actual, key=f"show_r_{pid}_{fecha_sel}", disabled=True)
+                st.markdown("**Rutina**")
+                st.link_button("🔗 Abrir Rutina (PDF)", r, disabled=(not bool(r)))
             with cR:
-                if plan_actual:
-                    st.link_button("🔗 Plan (PDF)", plan_actual)
-                else:
-                    st.write("Plan: _vacío_")
-                st.text_input("URL Plan", plan_actual, key=f"show_p_{pid}_{fecha_sel}", disabled=True)
+                st.markdown("**Plan alimenticio**")
+                st.link_button("🔗 Abrir Plan (PDF)", p, disabled=(not bool(p)))
 
             with st.expander("👁️ Vista previa (Drive)"):
-                if rutina_actual:
-                    st.components.v1.iframe(to_drive_preview(rutina_actual), height=360)
-                if plan_actual:
-                    st.components.v1.iframe(to_drive_preview(plan_actual), height=360)
+                if r:
+                    st.components.v1.iframe(to_drive_preview(r), height=360)
+                if p:
+                    st.components.v1.iframe(to_drive_preview(p), height=360)
 
-            c1, c2 = st.columns(2)
-            with c1:
-                n_r = st.text_input("Editar URL Rutina", rutina_actual, key=f"edit_r_{pid}_{fecha_sel}")
-            with c2:
-                n_p = st.text_input("Editar URL Plan", plan_actual, key=f"edit_p_{pid}_{fecha_sel}")
-            a1, a2, a3 = st.columns([1,1,2])
-            with a1:
-                if st.button("💾 Guardar cambios"):
-                    exec_sql("""UPDATE mediciones SET rutina_pdf=%s, plan_pdf=%s
-                                WHERE paciente_id=%s AND fecha=%s""",
-                             (n_r.strip() or None, n_p.strip() or None, pid, fecha_sel))
-                    st.success("PDFs actualizados ✅"); st.rerun()
-            with a2:
-                if st.button("🧹 Vaciar ambos"):
-                    exec_sql("""UPDATE mediciones SET rutina_pdf=NULL, plan_pdf=NULL
-                                WHERE paciente_id=%s AND fecha=%s""", (pid, fecha_sel))
-                    st.success("PDFs vaciados ✅"); st.rerun()
+            # (Opcional) Botón para vaciar ambos enlaces de esa fecha
+            if st.button("🧹 Vaciar ambos enlaces de esta cita", key=f"vaciar_pdf_{pid}_{fecha_sel}"):
+                exec_sql("""UPDATE mediciones
+                            SET rutina_pdf=NULL,
+                                plan_pdf=NULL
+                            WHERE paciente_id = %s
+                              AND fecha = %s""", (pid, fecha_sel))
+                st.success("PDFs vaciados ✅");
+                st.rerun()
 
     # --- Fotos ---
     with tab_fotos:
