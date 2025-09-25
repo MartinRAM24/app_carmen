@@ -1010,6 +1010,7 @@ if role == "admin":
                 st.markdown(f"#### 📅 {fch}")
                 fila = gal[gal["fecha"] == fch]
                 cols = st.columns(4)
+                fila = fila.reset_index(drop=True)
                 for idx, r in fila.iterrows():
                     with cols[idx % 4]:
                         # si hay drive_file_id, usa URL directa de Drive; si no, usa filepath (compatibilidad)
