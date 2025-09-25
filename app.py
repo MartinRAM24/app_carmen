@@ -16,9 +16,8 @@ st.set_page_config(page_title="Pacientes", page_icon="🩺", layout="wide")
 
 # === Fondo desde Google Drive ===
 drive_file_id = "1mWhvlRxhxGtoxi9SXVeWx6pg_EnvqSqP"
-bg_url = f"https://drive.google.com/uc?export=view&id={drive_file_id}"
 # Alternativa (a veces carga más rápido):
-# bg_url = f"https://lh3.googleusercontent.com/d/{drive_file_id}=s0"
+bg_url = f"https://lh3.googleusercontent.com/d/{drive_file_id}=s0"
 
 st.markdown(f"""
 <style>
