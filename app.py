@@ -1118,31 +1118,26 @@ if role == "admin":
         if "_photos_css_loaded" not in st.session_state:
             st.markdown("""
             <style>
-              .photos-grid {
-                display: grid;
-                grid-template-columns: repeat(4, 1fr); /* 4 columnas */
-                gap: 16px;
-              }
               .photo-card {
                 background: #111;
-                border-radius: 16px;
+                border-radius: 12px;
                 overflow: hidden;
-                box-shadow: 0 4px 18px rgba(0,0,0,.2);
+                box-shadow: 0 4px 12px rgba(0,0,0,.2);
                 display: flex;
                 flex-direction: column;
-                justify-content: space-between;
+                align-items: center;
               }
               .photo-card img {
-              width: 100%;
-              height: 220px;
-              object-fit: contain;  /* ajusta sin recortar */
-              background: #000;     /* fondo para rellenar */
-}
-
+                height: 220px;          /* mismo alto para todas */
+                width: auto;            /* ancho proporcional */
+                object-fit: contain;    /* no recorta */
+                display: block;
+                margin: auto;
               }
               .photo-actions {
                 display: flex;
-                justify-content: space-around;
+                justify-content: center;
+                gap: 8px;
                 padding: 8px;
               }
             </style>
@@ -1202,6 +1197,10 @@ if role == "admin":
                             st.markdown(f"""
                             <div class="photo-card">
                               <img src="{img_url}" alt="foto">
+                              <div class="photo-actions">
+                                <a href="{dl_url or '#'}" target="_blank"><button>⬇️ Descargar</button></a>
+                                <form action="#" method="post"><button>🗑️ Eliminar</button></form>
+                              </div>
                             </div>
                             """, unsafe_allow_html=True)
 
