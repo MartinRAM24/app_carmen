@@ -1329,22 +1329,69 @@ elif role == "paciente":
                  ORDER BY fecha DESC
                  """, (int(pac["id"]),))
 
-    if gal.empty:
-        st.info("Sin fotos aún.")
-    else:
-        for fch in sorted(gal["fecha"].unique(), reverse=True):
-            st.markdown(f"#### 📅 {fch}")
-            fila = gal[gal["fecha"] == fch]
-            cols = st.columns(4)
-            fila = fila.reset_index(drop=True)
-            for idx, rr in fila.iterrows():
-                with cols[idx % 4]:
-                    if rr.get("drive_file_id"):
-                        img_url = drive_image_view_url(rr["drive_file_id"])
-                        st.image(img_url, use_container_width=True)
-                        st.link_button("⬇️ Descargar", drive_image_download_url(rr["drive_file_id"]))
-                    elif rr.get("filepath"):
-                        st.image(rr["filepath"], use_container_width=True)
+    # CSS (solo una vez al inicio de la vista paciente)
+    if "_photos_css_loaded" not in st.session_state:
+        st.markdown("""
+        <style>
+          .photo-card {
+            background: #111;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0,0,0,.2);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 6px;
+          }
+          .photo-card img {
+            height: 220px;       /* mismo alto en todas */
+            width: auto;         /* ancho proporcional */
+            object-fit: contain; /* no recorta */
+            display: block;
+            margin: auto;
+          }
+        </style>
+        """, unsafe_allow_html=True)
+        st.session_state._photos_css_loaded = True
+
+
+    # Render de fotos para paciente
+    def _chunk(lst, n):
+        for i in range(0, len(lst), n):
+            yield lst[i:i + n]
+
+
+    for fch in sorted(gal["fecha"].unique(), reverse=True):
+        st.markdown(f"### 🗓️ {fch}")
+
+        fila = gal[gal["fecha"] == fch].reset_index(drop=True).to_dict("records")
+
+        # filas de 4 columnas
+        for fila4 in _chunk(fila, 4):
+            cols = st.columns(4, gap="medium")
+            for i, r in enumerate(fila4):
+                with cols[i]:
+                    # URLs
+                    if r.get("drive_file_id"):
+                        img_url = drive_image_view_url(r["drive_file_id"])
+                        dl_url = drive_image_download_url(r["drive_file_id"])
+                    else:
+                        img_url = r["filepath"]
+                        dl_url = None
+
+                    # tarjeta con imagen
+                    st.markdown(f"""
+                    <div class="photo-card">
+                      <img src="{img_url}" alt="foto">
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    # acción disponible para paciente (solo descarga)
+                    if dl_url:
+                        st.link_button("⬇️ Descargar", dl_url)
+                    else:
+                        st.caption("—")
+
 
 
 
