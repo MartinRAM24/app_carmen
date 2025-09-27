@@ -819,51 +819,188 @@ if role == "admin":
     # --- Mediciones ---
     with tab_medidas:
         st.caption("Registra o actualiza medidas por fecha (cada fecha es una cita).")
-        with st.form("form_medicion"):
-            f = st.text_input("Fecha de la medición (YYYY-MM-DD)", value=str(date.today()))
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                peso_kg = st.number_input("Peso (kg)", min_value=0.0, step=0.1, value=0.0)
-                grasa = st.number_input("% Grasa", min_value=0.0, step=0.1, value=0.0)
-                musc = st.number_input("% Músculo", min_value=0.0, step=0.1, value=0.0)
-            with c2:
-                brazo_r = st.number_input("Brazo (reposo)", min_value=0.0, step=0.1, value=0.0)
-                brazo_f = st.number_input("Brazo (flex)", min_value=0.0, step=0.1, value=0.0)
-                pecho_r = st.number_input("Pecho (reposo)", min_value=0.0, step=0.1, value=0.0)
-            with c3:
-                pecho_f = st.number_input("Pecho (flex)", min_value=0.0, step=0.1, value=0.0)
-                cintura = st.number_input("Cintura (cm)", min_value=0.0, step=0.1, value=0.0)
-                cadera = st.number_input("Cadera (cm)", min_value=0.0, step=0.1, value=0.0)
-            pierna = st.number_input("Pierna (cm)", min_value=0.0, step=0.1, value=0.0)
-            pantorrilla = st.number_input("Pantorrilla (cm)", min_value=0.0, step=0.1, value=0.0)
-            notas_med = st.text_area("Notas de la medición", "")
-            guardar_med = st.form_submit_button("Guardar/Actualizar medición")
 
-        if guardar_med:
-            upsert_medicion(pid, f.strip(), None, None)
-            def nz(x): return None if x in (0, 0.0) else x
-            exec_sql("""
-                     UPDATE mediciones
-                     SET peso_kg=%s,
-                         grasa_pct=%s,
-                         musculo_pct=%s,
-                         brazo_rest=%s,
-                         brazo_flex=%s,
-                         pecho_rest=%s,
-                         pecho_flex=%s,
-                         cintura_cm=%s,
-                         cadera_cm=%s,
-                         pierna_cm=%s,
-                         pantorrilla_cm=%s,
-                         notas=%s
-                     WHERE paciente_id = %s
-                       AND fecha = %s
-                     """, (nz(peso_kg), nz(grasa), nz(musc),
-                           nz(brazo_r), nz(brazo_f),
-                           nz(pecho_r), nz(pecho_f),
-                           nz(cintura), nz(cadera), nz(pierna), nz(pantorrilla),
-                           (notas_med.strip() or None), pid, f.strip()))
-            st.success("Medición guardada ✅"); st.rerun()
+        # ===== 1) HISTORIAL (siempre visible primero) =====
+        hist = df_sql("""
+                      SELECT fecha,
+                             peso_kg        AS peso_KG,
+                             grasa_pct      AS grasa,
+                             musculo_pct    AS musculo,
+                             brazo_rest     AS brazo_rest_CM,
+                             brazo_flex     AS brazo_flex_CM,
+                             pecho_rest     AS pecho_rest_CM,
+                             pecho_flex     AS pecho_flex_CM,
+                             cintura_cm     AS cintura_CM,
+                             cadera_cm      AS cadera_CM,
+                             pierna_cm      AS pierna_CM,
+                             pantorrilla_cm AS pantorrilla_CM
+                      FROM mediciones
+                      WHERE paciente_id = %s
+                      ORDER BY fecha DESC
+                      """, (pid,))
+
+        st.markdown("#### 📜 Historial")
+        if hist.empty:
+            st.info("Sin mediciones aún.")
+        else:
+            st.dataframe(hist, use_container_width=True, hide_index=True)
+
+        # ===== 2) NUEVA CITA / ACTUALIZAR (expander) =====
+        with st.expander("➕ Nueva cita / Guardar o actualizar por fecha", expanded=False):
+            with st.form("form_medicion"):
+                f = st.text_input("Fecha de la medición (YYYY-MM-DD)", value=str(date.today()))
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    peso_kg = st.number_input("Peso (kg)", min_value=0.0, step=0.1, value=0.0)
+                    grasa = st.number_input("% Grasa", min_value=0.0, step=0.1, value=0.0)
+                    musc = st.number_input("% Músculo", min_value=0.0, step=0.1, value=0.0)
+                with c2:
+                    brazo_r = st.number_input("Brazo (reposo)", min_value=0.0, step=0.1, value=0.0)
+                    brazo_f = st.number_input("Brazo (flex)", min_value=0.0, step=0.1, value=0.0)
+                    pecho_r = st.number_input("Pecho (reposo)", min_value=0.0, step=0.1, value=0.0)
+                with c3:
+                    pecho_f = st.number_input("Pecho (flex)", min_value=0.0, step=0.1, value=0.0)
+                    cintura = st.number_input("Cintura (cm)", min_value=0.0, step=0.1, value=0.0)
+                    cadera = st.number_input("Cadera (cm)", min_value=0.0, step=0.1, value=0.0)
+                pierna = st.number_input("Pierna (cm)", min_value=0.0, step=0.1, value=0.0)
+                pantorrilla = st.number_input("Pantorrilla (cm)", min_value=0.0, step=0.1, value=0.0)
+                notas_med = st.text_area("Notas de la medición", "")
+                guardar_med = st.form_submit_button("Guardar/Actualizar medición")
+
+            if guardar_med:
+                upsert_medicion(pid, f.strip(), None, None)
+
+
+                def nz(x): return None if x in (0, 0.0) else x
+
+
+                exec_sql("""
+                         UPDATE mediciones
+                         SET peso_kg=%s,
+                             grasa_pct=%s,
+                             musculo_pct=%s,
+                             brazo_rest=%s,
+                             brazo_flex=%s,
+                             pecho_rest=%s,
+                             pecho_flex=%s,
+                             cintura_cm=%s,
+                             cadera_cm=%s,
+                             pierna_cm=%s,
+                             pantorrilla_cm=%s,
+                             notas=%s
+                         WHERE paciente_id = %s
+                           AND fecha = %s
+                         """, (nz(peso_kg), nz(grasa), nz(musc),
+                               nz(brazo_r), nz(brazo_f),
+                               nz(pecho_r), nz(pecho_f),
+                               nz(cintura), nz(cadera), nz(pierna), nz(pantorrilla),
+                               (notas_med.strip() or None), pid, f.strip()))
+                st.success("Medición guardada ✅");
+                st.rerun()
+
+        # ===== 3) EDITAR CITA EXISTENTE (expander) =====
+        citas_m = df_sql("SELECT fecha FROM mediciones WHERE paciente_id=%s ORDER BY fecha DESC", (pid,))
+        if not citas_m.empty:
+            with st.expander("✏️ Editar una cita existente", expanded=False):
+                fecha_sel_m = st.selectbox("Editar medición de fecha", citas_m["fecha"].tolist(),
+                                           key=f"med_fecha_{pid}")
+                actual_m = df_sql(
+                    "SELECT * FROM mediciones WHERE paciente_id=%s AND fecha=%s",
+                    (pid, fecha_sel_m)
+                ).iloc[0]
+
+                # Acciones sobre la cita seleccionada
+                col_del1, col_del2 = st.columns([1, 1])
+                with col_del1:
+                    if st.button("🗑️ Eliminar SOLO la cita (conservar archivos)",
+                                 key=f"del_cita_keep_{pid}_{fecha_sel_m}"):
+                        delete_cita(pid, fecha_sel_m, remove_drive=False)
+                        st.success(f"Cita {fecha_sel_m} eliminada de la base. Archivos en Drive conservados.")
+                        st.rerun()
+                with col_del2:
+                    if st.button("🗑️ Eliminar cita + carpeta en Drive", key=f"del_cita_drive_{pid}_{fecha_sel_m}"):
+                        delete_cita(pid, fecha_sel_m, remove_drive=True, send_to_trash=True)
+                        st.success(f"Cita {fecha_sel_m} eliminada. Carpeta de la cita enviada a la papelera de Drive.")
+                        st.rerun()
+
+                st.markdown("#### Editar valores")
+                cols = st.columns(6)
+
+
+                def val(x):
+                    return float(x) if x is not None else 0.0
+
+
+                campos = [
+                    ("peso_kg", "Peso (kg)", 0),
+                    ("grasa_pct", "% Grasa", 1),
+                    ("musculo_pct", "% Músculo", 2),
+                    ("brazo_rest", "Brazo reposo", 3),
+                    ("brazo_flex", "Brazo flex", 4),
+                    ("pecho_rest", "Pecho reposo", 5),
+                    ("pecho_flex", "Pecho flex", 0),
+                    ("cintura_cm", "Cintura (cm)", 1),
+                    ("cadera_cm", "Cadera (cm)", 2),
+                    ("pierna_cm", "Pierna (cm)", 3),
+                    ("pantorrilla_cm", "Pantorrilla (cm)", 4),
+                ]
+                new_vals = {}
+                for key, label, col_idx in campos:
+                    with cols[col_idx]:
+                        new_vals[key] = st.number_input(label, value=val(actual_m[key]), step=0.1,
+                                                        key=f"med_edit_{key}_{pid}_{fecha_sel_m}")
+
+                notas_edit = st.text_area("Notas", actual_m["notas"] or "", key=f"med_edit_notas_{pid}_{fecha_sel_m}")
+
+                cA, cB = st.columns(2)
+                with cA:
+                    if st.button("💾 Guardar cambios de medidas", key=f"save_edit_{pid}_{fecha_sel_m}"):
+                        exec_sql("""
+                                 UPDATE mediciones
+                                 SET peso_kg=%s,
+                                     grasa_pct=%s,
+                                     musculo_pct=%s,
+                                     brazo_rest=%s,
+                                     brazo_flex=%s,
+                                     pecho_rest=%s,
+                                     pecho_flex=%s,
+                                     cintura_cm=%s,
+                                     cadera_cm=%s,
+                                     pierna_cm=%s,
+                                     pantorrilla_cm=%s,
+                                     notas=%s
+                                 WHERE paciente_id = %s
+                                   AND fecha = %s
+                                 """, (new_vals["peso_kg"] or None, new_vals["grasa_pct"] or None,
+                                       new_vals["musculo_pct"] or None,
+                                       new_vals["brazo_rest"] or None, new_vals["brazo_flex"] or None,
+                                       new_vals["pecho_rest"] or None, new_vals["pecho_flex"] or None,
+                                       new_vals["cintura_cm"] or None, new_vals["cadera_cm"] or None,
+                                       new_vals["pierna_cm"] or None, new_vals["pantorrilla_cm"] or None,
+                                       (notas_edit.strip() or None), pid, fecha_sel_m))
+                        st.success("Mediciones actualizadas ✅");
+                        st.rerun()
+                with cB:
+                    if st.button("🧹 Vaciar medidas (mantener PDFs)", key=f"clear_edit_{pid}_{fecha_sel_m}"):
+                        exec_sql("""
+                                 UPDATE mediciones
+                                 SET peso_kg=NULL,
+                                     grasa_pct=NULL,
+                                     musculo_pct=NULL,
+                                     brazo_rest=NULL,
+                                     brazo_flex=NULL,
+                                     pecho_rest=NULL,
+                                     pecho_flex=NULL,
+                                     cintura_cm=NULL,
+                                     cadera_cm=NULL,
+                                     pierna_cm=NULL,
+                                     pantorrilla_cm=NULL,
+                                     notas=NULL
+                                 WHERE paciente_id = %s
+                                   AND fecha = %s
+                                 """, (pid, fecha_sel_m))
+                        st.success("Mediciones vaciadas ✅");
+                        st.rerun()
 
         citas_m = df_sql("SELECT fecha FROM mediciones WHERE paciente_id=%s ORDER BY fecha DESC", (pid,))
         if citas_m.empty:
