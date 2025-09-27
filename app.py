@@ -1115,6 +1115,40 @@ if role == "admin":
 
     # --- Fotos ---
     with tab_fotos:
+        if "_photos_css_loaded" not in st.session_state:
+            st.markdown("""
+            <style>
+              /* contenedor de grilla */
+              .photos-grid {
+                display: grid;
+                grid-template-columns: repeat(5, minmax(0, 1fr));
+                gap: 16px;
+              }
+              /* tarjeta */
+              .photo-card {
+                background: #111;
+                border-radius: 16px;
+                overflow: hidden;
+                box-shadow: 0 4px 18px rgba(0,0,0,.2);
+                padding: 0; 
+              }
+              /* imagen uniforme */
+              .photo-card img {
+                width: 100%;
+                height: 220px;              /* ← alto fijo para todas */
+                object-fit: cover;          /* ← recorte agradable (tipo Instagram) */
+                display: block;
+              }
+              .photo-actions {
+                display: flex; 
+                gap: 8px; 
+                padding: 12px; 
+                justify-content: flex-start;
+              }
+            </style>
+            """, unsafe_allow_html=True)
+            st.session_state._photos_css_loaded = True
+
         st.caption("Sube fotos asociadas a una **cita/fecha** (formato YYYY-MM-DD).")
         colA, colB = st.columns([2, 1])
         with colA:
@@ -1142,55 +1176,70 @@ if role == "admin":
             st.info("Sin fotos aún.")
         else:
             for fch in sorted(gal["fecha"].unique(), reverse=True):
-                st.markdown(f"#### 📅 {fch}")
-                fila = gal[gal["fecha"] == fch]
-                cols = st.columns(4)
-                fila = fila.reset_index(drop=True)
+                st.markdown(f"### 🗓️ {fch}")
+                # abrimos contenedor de grilla
+                st.markdown("<div class='photos-grid'>", unsafe_allow_html=True)
+
+                fila = gal[gal["fecha"] == fch].reset_index(drop=True)
                 for idx, r in fila.iterrows():
-                    with cols[idx % 4]:
-                        # si hay drive_file_id, usa URL directa de Drive; si no, usa filepath (compatibilidad)
-                        if r.get("drive_file_id"):
-                            img_url = drive_image_view_url(r["drive_file_id"])
-                            st.image(img_url, use_container_width=True)
-                            dl_url = drive_image_download_url(r["drive_file_id"])
-                            c1, c2 = st.columns([1, 1])
-                            with c1:
-                                st.link_button("⬇️ Descargar", dl_url)
+                    # imagen (Drive o local)
+                    if r.get("drive_file_id"):
+                        img_url = drive_image_view_url(r["drive_file_id"])
+                        dl_url = drive_image_download_url(r["drive_file_id"])
+                    else:
+                        img_url = r["filepath"]
+                        dl_url = None
+
+                    # tarjeta con imagen tamaño fijo
+                    st.markdown(f"""
+                    <div class="photo-card">
+                      <img src="{img_url}" alt="foto">
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    # acciones (colocamos los botones debajo de la tarjeta)
+                    c1, c2 = st.columns([1, 1])
+                    with c1:
+                        if dl_url:
+                            st.link_button("⬇️ Descargar", dl_url,
+                                           key=f"admin_foto_dl_{pid}_{fch}_{int(r['id'])}")
                         else:
-                            st.image(r["filepath"], use_container_width=True)
-                            c1, c2 = st.columns([1, 1])
-                            with c1:
-                                st.download_button("⬇️ Descargar", data=open(r["filepath"], "rb"),
-                                                   file_name=os.path.basename(r["filepath"]))
+                            st.caption("—")
+                    with c2:
+                        if st.button("🗑️ Eliminar",
+                                     key=f"admin_foto_del_{pid}_{fch}_{int(r['id'])}"):
+                            st.session_state._delete_photo_id = int(r["id"])
+                            st.session_state._delete_photo_path = r.get("filepath")
+                            st.session_state._delete_photo_date = fch
 
-                        with c2:
-                            unique_del_key = f"admin_foto_del_{pid}_{fch}_{int(r['id'])}"
-                            if st.button("🗑️ Eliminar", key=unique_del_key):
-                                st.session_state._delete_photo_id = int(r["id"])
-                                st.session_state._delete_photo_path = r.get("filepath")
-                                st.session_state._delete_photo_date = fch
+                # cerramos contenedor de grilla
+                st.markdown("</div>", unsafe_allow_html=True)
 
+                # diálogo de confirmación (con keys únicas)
                 if "_delete_photo_id" in st.session_state:
                     @st.dialog("Confirmar eliminación")
                     def _confirm_delete_dialog():
-                        st.warning("Esta acción eliminará la foto del disco y de la base de datos.")
-                        pth = st.session_state.get("_delete_photo_path", "")
-                        if pth and os.path.exists(pth):
-                            st.image(pth, caption=os.path.basename(pth), use_container_width=True)
+                        st.warning("Esta acción eliminará la foto del disco/Drive y de la base de datos.")
                         colA, colB = st.columns(2)
                         with colA:
-                            if st.button("✅ Sí, borrar"):
+                            if st.button("✅ Sí, borrar",
+                                         key=f"dlg_del_ok_{pid}_{st.session_state['_delete_photo_id']}"):
                                 delete_foto(st.session_state["_delete_photo_id"])
                                 for k in ("_delete_photo_id", "_delete_photo_path", "_delete_photo_date"):
                                     st.session_state.pop(k, None)
-                                st.success("Foto eliminada ✅"); st.rerun()
+                                st.success("Foto eliminada ✅");
+                                st.rerun()
                         with colB:
-                            if st.button("❌ Cancelar"):
+                            if st.button("❌ Cancelar",
+                                         key=f"dlg_del_cancel_{pid}_{st.session_state['_delete_photo_id']}"):
                                 for k in ("_delete_photo_id", "_delete_photo_path", "_delete_photo_date"):
                                     st.session_state.pop(k, None)
                                 st.info("Operación cancelada")
+
+
                     _confirm_delete_dialog()
                     break
+
 
 # ---------- PACIENTE (solo lectura) ----------
 elif role == "paciente":
