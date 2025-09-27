@@ -419,7 +419,68 @@ def ensure_cita_folder(pid: int, fecha_str: str) -> str:
     """, (pid, fecha_str, cita_folder_id))
     return cita_folder_id
 
+def get_patient_folder_id(pid: int) -> str:
+    d = df_sql("SELECT drive_folder_id FROM pacientes WHERE id=%s", (pid,))
+    if d.empty or not (d["drive_folder_id"].iloc[0] or "").strip():
+        raise RuntimeError("El paciente no tiene carpeta de Drive asignada.")
+    return d["drive_folder_id"].iloc[0].strip()
 
+def enforce_patient_pdf_quota(patient_folder_id: str, keep: int = 10, send_to_trash: bool = True):
+    drive = get_drive()
+
+    def _list_pdfs_in(folder_id: str):
+        files, page_token = [], None
+        while True:
+            resp = drive.files().list(
+                q=f"'{folder_id}' in parents and mimeType='application/pdf' and trashed=false",
+                fields="nextPageToken, files(id, name, createdTime, parents)",
+                orderBy="createdTime asc",
+                pageSize=1000,
+                pageToken=page_token,
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+            ).execute()
+            files.extend(resp.get("files", []))
+            page_token = resp.get("nextPageToken")
+            if not page_token:
+                break
+        return files
+
+    # PDFs directamente bajo la carpeta del paciente (por si acaso)
+    all_pdfs = _list_pdfs_in(patient_folder_id)
+
+    # Subcarpetas (citas)
+    subs, page_token = [], None
+    while True:
+        resp = drive.files().list(
+            q=f"'{patient_folder_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false",
+            fields="nextPageToken, files(id, name)",
+            pageSize=1000,
+            pageToken=page_token,
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+        ).execute()
+        subs.extend(resp.get("files", []))
+        page_token = resp.get("nextPageToken")
+        if not page_token:
+            break
+
+    # PDFs en cada subcarpeta de cita
+    for sf in subs:
+        all_pdfs.extend(_list_pdfs_in(sf["id"]))
+
+    # Si excede, elimina/trashea los más viejos (orden global por createdTime)
+    if len(all_pdfs) > keep:
+        excess = len(all_pdfs) - keep
+        all_pdfs.sort(key=lambda x: x.get("createdTime", ""))  # viejos primero
+        to_remove = all_pdfs[:excess]
+        for f in to_remove:
+            if send_to_trash:
+                drive.files().update(
+                    fileId=f["id"], body={"trashed": True}, supportsAllDrives=True
+                ).execute()
+            else:
+                drive.files().delete(fileId=f["id"], supportsAllDrives=True).execute()
 
 
 def delete_paciente(pid: int):
@@ -509,6 +570,38 @@ def query_mediciones(pid):
         WHERE paciente_id = %s
         ORDER BY fecha DESC
     """, (pid,))
+
+def delete_cita(pid: int, fecha_str: str, remove_drive: bool = False, send_to_trash: bool = True):
+    """
+    Elimina la cita (fila en mediciones) para ese paciente y fecha.
+    Opcionalmente elimina/mueve a papelera la subcarpeta de Drive de la cita y borra fotos de esa fecha.
+    """
+    # 1) obtener carpeta de la cita (si existe)
+    m = df_sql("""
+        SELECT drive_cita_folder_id
+        FROM mediciones
+        WHERE paciente_id=%s AND fecha=%s
+    """, (pid, fecha_str))
+    cita_folder_id = (m.iloc[0]["drive_cita_folder_id"].strip()
+                      if (not m.empty and m.iloc[0]["drive_cita_folder_id"]) else None)
+
+    # 2) borrar fotos de esa fecha
+    exec_sql("DELETE FROM fotos WHERE paciente_id=%s AND fecha=%s", (pid, fecha_str))
+
+    # 3) borrar fila de mediciones
+    exec_sql("DELETE FROM mediciones WHERE paciente_id=%s AND fecha=%s", (pid, fecha_str))
+
+    # 4) manejar carpeta de Drive (opcional)
+    if remove_drive and cita_folder_id:
+        drive = get_drive()
+        try:
+            if send_to_trash:
+                drive.files().update(fileId=cita_folder_id, body={"trashed": True}, supportsAllDrives=True).execute()
+            else:
+                drive.files().delete(fileId=cita_folder_id, supportsAllDrives=True).execute()
+        except Exception as e:
+            st.info(f"[Drive] No pude eliminar la carpeta de la cita ({cita_folder_id}): {e}")
+
 
 def upsert_medicion(pid, fecha, rutina_pdf, plan_pdf):
     exec_sql("""
@@ -779,6 +872,22 @@ if role == "admin":
             fecha_sel_m = st.selectbox("Editar medición de fecha", citas_m["fecha"].tolist(), key=f"med_fecha_{pid}")
             actual_m = df_sql("SELECT * FROM mediciones WHERE paciente_id=%s AND fecha=%s", (pid, fecha_sel_m)).iloc[0]
 
+            # --- Acciones sobre la cita seleccionada ---
+            col_del1, col_del2 = st.columns([1, 1])
+
+            with col_del1:
+                if st.button("🗑️ Eliminar SOLO la cita (conservar archivos)", key=f"del_cita_keep_{pid}_{fecha_sel_m}"):
+                    delete_cita(pid, fecha_sel_m, remove_drive=False)  # SOLO DB
+                    st.success(f"Cita {fecha_sel_m} eliminada de la base. Archivos en Drive conservados.")
+                    st.rerun()
+
+            with col_del2:
+                if st.button("🗑️ Eliminar cita + carpeta de la cita en Drive",
+                             key=f"del_cita_drive_{pid}_{fecha_sel_m}"):
+                    delete_cita(pid, fecha_sel_m, remove_drive=True, send_to_trash=True)  # DB + carpeta a papelera
+                    st.success(f"Cita {fecha_sel_m} eliminada. Carpeta de la cita enviada a la papelera de Drive.")
+                    st.rerun()
+
             st.markdown("#### Editar valores")
             cols = st.columns(6)
             def val(x): return float(x) if x is not None else 0.0
@@ -918,9 +1027,14 @@ if role == "admin":
                     exec_sql("""
                              INSERT INTO mediciones (paciente_id, fecha, rutina_pdf)
                              VALUES (%s, %s, %s) ON CONFLICT (paciente_id, fecha)
-                        DO
+                    DO
                              UPDATE SET rutina_pdf = EXCLUDED.rutina_pdf
                              """, (pid, fecha_pdf.strip(), pdf["webViewLink"]))
+
+                    # 👇 NUEVO: forzar cuota global de 10 PDFs por paciente
+                    patient_folder_id = get_patient_folder_id(pid)
+                    enforce_patient_pdf_quota(patient_folder_id, keep=10, send_to_trash=True)
+
                     st.success("Rutina subida y enlazada ✅");
                     st.rerun()
 
@@ -937,9 +1051,14 @@ if role == "admin":
                     exec_sql("""
                              INSERT INTO mediciones (paciente_id, fecha, plan_pdf)
                              VALUES (%s, %s, %s) ON CONFLICT (paciente_id, fecha)
-                        DO
+                    DO
                              UPDATE SET plan_pdf = EXCLUDED.plan_pdf
                              """, (pid, fecha_pdf.strip(), pdf["webViewLink"]))
+
+                    # 👇 NUEVO: forzar cuota global de 10 PDFs por paciente
+                    patient_folder_id = get_patient_folder_id(pid)
+                    enforce_patient_pdf_quota(patient_folder_id, keep=10, send_to_trash=True)
+
                     st.success("Plan subido y enlazado ✅");
                     st.rerun()
 
