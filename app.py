@@ -1164,7 +1164,8 @@ if role == "admin":
                                                    file_name=os.path.basename(r["filepath"]))
 
                         with c2:
-                            if st.button("🗑️ Eliminar", key=f"del_{r['id']}"):
+                            unique_del_key = f"admin_foto_del_{pid}_{fch}_{int(r['id'])}"
+                            if st.button("🗑️ Eliminar", key=unique_del_key):
                                 st.session_state._delete_photo_id = int(r["id"])
                                 st.session_state._delete_photo_path = r.get("filepath")
                                 st.session_state._delete_photo_date = fch
