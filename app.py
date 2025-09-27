@@ -1202,14 +1202,12 @@ if role == "admin":
                     with c1:
                         if dl_url:
                             unique_del_key = f"admin_foto_del_{pid}_{fch}_{int(r['id'])}"
-                            st.link_button("⬇️ Descargar", dl_url,
-                                           key=unique_del_key)
+                            st.link_button("⬇️ Descargar", dl_url)
                         else:
                             st.caption("—")
                     with c2:
                         unique_del_key = f"admin_foto_del_{pid}_{fch}_{int(r['id'])}"
-                        if st.button("🗑️ Eliminar",
-                                     key=unique_del_key):
+                        if st.button("🗑️ Eliminar", key=unique_del_key):
                             st.session_state._delete_photo_id = int(r["id"])
                             st.session_state._delete_photo_path = r.get("filepath")
                             st.session_state._delete_photo_date = fch
