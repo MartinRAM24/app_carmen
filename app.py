@@ -1382,7 +1382,7 @@ elif role == "paciente":
                     # tarjeta con imagen
                     st.markdown(f"""
                     <div class="photo-card">
-                      <img src="{img_url}" alt="foto">
+                    <img src="{img_url}" alt="foto">
                     </div>
                     """, unsafe_allow_html=True)
 
