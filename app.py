@@ -1133,9 +1133,12 @@ if role == "admin":
                 justify-content: space-between;
               }
               .photo-card img {
-                width: 100%;
-                height: 220px;       /* altura fija */
-                object-fit: cover;   /* recorta */
+              width: 100%;
+              height: 220px;
+              object-fit: contain;  /* ajusta sin recortar */
+              background: #000;     /* fondo para rellenar */
+}
+
               }
               .photo-actions {
                 display: flex;
