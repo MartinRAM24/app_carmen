@@ -1197,10 +1197,6 @@ if role == "admin":
                             st.markdown(f"""
                             <div class="photo-card">
                               <img src="{img_url}" alt="foto">
-                              <div class="photo-actions">
-                                <a href="{dl_url or '#'}" target="_blank"><button>⬇️ Descargar</button></a>
-                                <form action="#" method="post"><button>🗑️ Eliminar</button></form>
-                              </div>
                             </div>
                             """, unsafe_allow_html=True)
 
