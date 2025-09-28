@@ -200,7 +200,7 @@ with tab_fotos:
     st.caption("Sube fotos asociadas a una **fecha** (YYYY-MM-DD).")
     colA, colB = st.columns([2, 1])
     with colA:
-        fecha_f = st.text_input("Fecha", value=str(date.today()), key=f"pdf_fecha_{pid}")
+        fecha_f = st.text_input("Fecha", value=str(date.today()), key=f"fotos_fecha_{pid}")
         up_imgs = st.file_uploader("Agregar fotos", accept_multiple_files=True, type=["jpg","jpeg","png","webp"])
     with colB:
         if st.button("⬆️ Subir fotos"):
