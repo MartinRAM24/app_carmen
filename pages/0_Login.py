@@ -2,10 +2,14 @@
 import streamlit as st
 from modules.core import is_admin_ok, login_paciente, registrar_paciente, normalize_tel
 
-st.set_page_config(page_title="Carmen Coach — Acceso", page_icon="🩺", layout="wide")
+st.set_page_config(
+    page_title="Carmen Coach",
+    page_icon="assets/logo.png",  # favicon
+    layout="wide"
+)
 
-st.title("🩺 Carmen Coach")
-st.caption("Bienvenida/o. Elige cómo quieres entrar.")
+st.image("assets/logo.png", width=120)
+st.title("Carmen Coach")
 
 # Estado base
 st.session_state.setdefault("role", None)
