@@ -97,35 +97,31 @@ with c2:
                 if rpdf: st.components.v1.iframe(to_drive_preview(rpdf), height=360)
                 if ppdf: st.components.v1.iframe(to_drive_preview(ppdf), height=360)
 
-st.subheader("📏 Mis mediciones")
+    st.subheader("📏 Mis mediciones")
 
-meds = df_sql("""
-    SELECT fecha,
-           peso_kg AS "Peso (kg)",
-           grasa_pct AS "% Grasa",
-           musculo_pct AS "% Músculo",
-           brazo_rest AS "Brazo reposo (cm)",
-           brazo_flex AS "Brazo flex (cm)",
-           pecho_rest AS "Pecho reposo (cm)",
-           pecho_flex AS "Pecho flex (cm)",
-           cintura_cm AS "Cintura (cm)",
-           cadera_cm AS "Cadera (cm)",
-           pierna_cm AS "Pierna (cm)",
-           pantorrilla_cm AS "Pantorrilla (cm)",
-           notas AS "Notas"
-    FROM mediciones
-    WHERE paciente_id=%s
-    ORDER BY fecha DESC
-""", (pid,))
+    meds = df_sql("""
+                  SELECT fecha,
+                         peso_kg        AS "Peso (kg)",
+                         grasa_pct      AS "% Grasa",
+                         musculo_pct    AS "% Músculo",
+                         brazo_rest     AS "Brazo reposo (cm)",
+                         brazo_flex     AS "Brazo flex (cm)",
+                         pecho_rest     AS "Pecho reposo (cm)",
+                         pecho_flex     AS "Pecho flex (cm)",
+                         cintura_cm     AS "Cintura (cm)",
+                         cadera_cm      AS "Cadera (cm)",
+                         pierna_cm      AS "Pierna (cm)",
+                         pantorrilla_cm AS "Pantorrilla (cm)",
+                         notas          AS "Notas"
+                  FROM mediciones
+                  WHERE paciente_id = %s
+                  ORDER BY fecha DESC
+                  """, (pid,))
 
-if meds.empty:
-    st.info("Aún no tienes mediciones registradas.")
-else:
-    st.dataframe(meds, use_container_width=True, hide_index=True)
-
-
-
-
+    if meds.empty:
+        st.info("Aún no tienes mediciones registradas.")
+    else:
+        st.dataframe(meds, use_container_width=True, hide_index=True)
 
 st.divider()
 if st.button("Cerrar sesión"):
