@@ -259,4 +259,16 @@ with tab_fotos:
                 _confirm_delete_dialog()
                 break
 
+st.divider()
 
+# Atajos opcionales a otras páginas (si quieres; o confía en el sidebar)
+if st.button("Ir a Gestion Hoy →"):
+    st.switch_page("pages/2_Carmen_Hoy.py")
+if st.button("Ir a Gestión de Citas →"):
+    st.switch_page("pages/4_Carmen_Citas.py")
+
+# Cerrar sesión (sustituye al antiguo st.page_link)
+if st.button("🚪 Cerrar sesión"):
+    st.session_state.role = None
+    st.session_state.paciente = None
+    st.rerun()

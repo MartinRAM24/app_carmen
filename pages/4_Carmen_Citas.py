@@ -95,3 +95,16 @@ with colr:
                 except Exception as e:
                     st.error(f"No se pudo eliminar: {e}")
 
+st.divider()
+
+# Atajos opcionales a otras páginas (si quieres; o confía en el sidebar)
+if st.button("Ir a Gestion Hoy →"):
+    st.switch_page("pages/2_Carmen_Hoy.py")
+if st.button("Ir a Gestión de Pacientes →"):
+    st.switch_page("pages/3_Carmen_Pacientes.py")
+
+# Cerrar sesión (sustituye al antiguo st.page_link)
+if st.button("🚪 Cerrar sesión"):
+    st.session_state.role = None
+    st.session_state.paciente = None
+    st.rerun()
