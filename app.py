@@ -719,7 +719,7 @@ def view_paciente_dashboard():
                                 unsafe_allow_html=True
                             )
                             if dl_url:
-                                st.link_button("⬇️ Descargar", dl_url, key=f"pac_dl_{pid}_{i}_{fch}")
+                                st.link_button("⬇️ Descargar", dl_url)
 
 
 # =========================
