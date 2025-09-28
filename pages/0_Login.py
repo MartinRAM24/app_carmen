@@ -2,7 +2,14 @@
 import streamlit as st
 from modules.core import is_admin_ok, login_paciente, registrar_paciente, normalize_tel
 
-st.image("assets/Logo.png", width=300)
+st.markdown(
+    """
+    <div style="display: flex; justify-content: center;">
+        <img src="assets/logo.png" width="150">
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 st.caption("Bienvenida/o. Elige cómo quieres entrar.")
 
 # Estado base
