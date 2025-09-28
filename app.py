@@ -59,6 +59,15 @@ a, .stLinkButton button { color: #7B1E3C !important; }
   overflow: hidden;
 }
 
+/* Personalizar los cuadros de mensaje */
+div[data-testid="stNotification"] {
+  background-color: #800020 !important;  /* guinda */
+  color: #FFFFFF !important;             /* texto en blanco */
+  border-radius: 8px !important;
+  border: 1px solid #B03060 !important;  /* borde guinda más claro */
+}
+
+
 /* Encabezados */
 h1, h2, h3, h4 { color: #111827; }
 """
