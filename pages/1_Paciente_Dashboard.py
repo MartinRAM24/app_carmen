@@ -10,6 +10,103 @@ import pandas as pd
 
 st.set_page_config(page_title="Paciente — Dashboard", page_icon="🧑", layout="wide")
 
+CUSTOM_CSS = """
+/* Sidebar */
+[data-testid="stSidebar"] {
+  background: linear-gradient(180deg, #7B1E3C 0%, #800020 100%);
+  color: #FFFFFF;
+}
+[data-testid="stSidebar"] * { color: #FFFFFF !important; }
+
+/* Área principal en blanco */
+main.block-container {
+  background: #FFFFFF;
+  padding-top: 1.2rem;
+  padding-bottom: 3rem;
+  border-radius: 12px;
+}
+
+/* Tarjetas internas (expanders, tabs, forms) */
+section[data-testid="stSidebarNav"] { background: transparent; }
+/* Expanders más oscuros */
+div[data-testid="stExpander"] > details {
+  background: #2C2C2C;   /* gris oscuro */
+  border-radius: 12px;
+  border: 1px solid #444444;  /* borde gris */
+  color: #FFFFFF;             /* texto en blanco */
+}
+
+
+/* ===== Inputs (cubre text/number/password/date/time/select/textarea) ===== */
+.stTextInput input,
+.stNumberInput input,
+.stDateInput input,
+.stTimeInput input,
+.stTextArea textarea,
+.stSelectbox [data-baseweb="select"] > div,
+.stMultiSelect [data-baseweb="select"] > div,
+[data-baseweb="input"] input,
+textarea,
+input[type="text"],
+input[type="password"],
+input[type="email"],
+input[type="tel"],
+input[type="number"] {
+  background: #F2F2F2 !important;    /* gris claro y descansado */
+  color: #111827 !important;          /* texto oscuro */
+  border: 1px solid #D1D5DB !important; /* gris medio */
+  border-radius: 10px !important;
+  box-shadow: none !important;
+}
+
+/* Placeholders más suaves */
+::placeholder { color: #6B7280 !important; }
+
+/* Al enfocar: borde guinda sutil + halo tenue */
+.stTextInput input:focus,
+.stNumberInput input:focus,
+.stDateInput input:focus,
+.stTimeInput input:focus,
+.stTextArea textarea:focus,
+.stSelectbox [data-baseweb="select"] > div:focus-within,
+.stMultiSelect [data-baseweb="select"] > div:focus-within,
+[data-baseweb="input"] input:focus,
+textarea:focus {
+  border-color: #A02C4A !important;           /* guinda */
+  box-shadow: 0 0 0 3px rgba(160,44,74,0.15) !important;
+  outline: none !important;
+}
+
+
+/* Botones primarios */
+button[kind="primary"] {
+  background: #800020 !important;
+  color: #FFFFFF !important;
+  border-radius: 10px !important;
+  border: 0 !important;
+}
+button[kind="primary"]:hover { filter: brightness(0.9); }
+
+/* Links */
+a, .stLinkButton button { color: #7B1E3C !important; }
+
+/* DataFrames */
+.stDataFrame div[data-testid="stTable"] {
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+div[data-baseweb="notification"] {
+  background-color: #800020 !important; 
+  color: #FFFFFF !important;
+}
+
+/* Encabezados */
+h1, h2, h3, h4 { color: #111827; }
+"""
+
+st.markdown(f"<style>{CUSTOM_CSS}</style>", unsafe_allow_html=True)
+
 # Guardia de sesión
 if st.session_state.get("role") != "paciente" or not st.session_state.get("paciente"):
     st.switch_page("app.py")
