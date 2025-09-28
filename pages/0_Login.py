@@ -2,6 +2,10 @@
 import streamlit as st
 from modules.core import is_admin_ok, login_paciente, registrar_paciente, normalize_tel
 import base64
+from modules.theme import CUSTOM_CSS  # o donde tengas la constante
+
+st.markdown(f"<style>{CUSTOM_CSS}</style>", unsafe_allow_html=True)
+
 
 def get_base64_of_bin_file(bin_file):
     with open(bin_file, "rb") as f:

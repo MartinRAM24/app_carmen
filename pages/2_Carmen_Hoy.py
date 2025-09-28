@@ -1,6 +1,11 @@
 # pages/2_Carmen_Hoy.py
 import streamlit as st
 from modules.core import df_sql
+from modules.theme import CUSTOM_CSS  # o donde tengas la constante
+
+
+st.markdown(f"<style>{CUSTOM_CSS}</style>", unsafe_allow_html=True)
+
 
 st.set_page_config(page_title="Carmen — Hoy", page_icon="📅", layout="wide")
 
