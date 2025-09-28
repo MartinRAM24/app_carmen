@@ -171,26 +171,29 @@ def registrar_paciente(nombre: str, telefono: str, password: str) -> int:
             (nombre.strip(), tel, pw_hash),
         )
         pid = int(cur.fetchone()[0])
-    try: st.cache_data.clear()
-    except: pass
+    try:
+        st.cache_data.clear()
+    except:
+        pass
     return pid
 
 def login_paciente(telefono: str, password: str) -> Optional[dict]:
     tel = normalize_tel(telefono)
     d = df_sql("SELECT id, nombre, telefono, password_hash FROM pacientes WHERE telefono=%s LIMIT 1", (tel,))
-    if d.empty: return None
+    if d.empty:
+        return None
     r = d.iloc[0]
     if r.get("password_hash") and check_password(password, str(r["password_hash"])):
         return {"id": int(r["id"]), "nombre": r["nombre"], "telefono": r["telefono"]}
     return None
 
+# ===== Admin simple con secrets =====
+ADMIN_USER = os.getenv("CARMEN_USER") or st.secrets.get("CARMEN_USER", "carmen")
+ADMIN_PASSWORD = os.getenv("CARMEN_PASSWORD") or st.secrets.get("CARMEN_PASSWORD")
+
 def is_admin_ok(user: str, password: str) -> bool:
-    # Permite dos modos: texto plano via CARMEN_PASSWORD, o hash SHA256 via ADMIN_PASSWORD_HASH
-    if ADMIN_PASSWORD:
-        return (user == ADMIN_USER) and (password == ADMIN_PASSWORD)
-    if ADMIN_PASSWORD_HASH:
-        return (user == ADMIN_USER) and (sha256(password) == ADMIN_PASSWORD_HASH)
-    return False  # obliga a configurar algo
+    return bool(ADMIN_USER) and bool(ADMIN_PASSWORD) and (user == ADMIN_USER) and (password == ADMIN_PASSWORD)
+
 
 # =========================
 # Google Drive helpers
@@ -428,18 +431,77 @@ def asociar_medicion_a_cita(pid: int, fecha_str: str):
 with st.sidebar:
     st.markdown("## Acceso")
     tabs = st.tabs(["👩‍⚕️ Admin", "🧑 Paciente (Agenda)", "🧑 Paciente (Portal RO)"])
+
+    # --- Admin ---
     with tabs[0]:
         a_user = st.text_input("Usuario", value=ADMIN_USER, disabled=True, key="admin_user_input")
         a_pass = st.text_input("Contraseña", type="password", key="admin_pass_input")
-        admin_login = st.button("Entrar como Admin", use_container_width=True, key="admin_login_btn")
+        if st.button("Entrar como Admin", use_container_width=True, key="admin_login_btn"):
+            if is_admin_ok(a_user, a_pass):
+                st.session_state.role = "admin"
+                st.session_state.paciente = None
+                st.success("Acceso admin concedido ✅")
+                st.rerun()
+            else:
+                st.error("Credenciales inválidas")
+
+    # --- Paciente (Agenda): Login / Registro ---
     with tabs[1]:
-        p_tel = st.text_input("Teléfono (agenda)", key="agenda_tel_input")
-        p_pw  = st.text_input("Contraseña", type="password", key="agenda_pass_input")
-        pat_login = st.button("Entrar (Agenda)", use_container_width=True, key="agenda_login_btn")
+        modo = st.radio("¿Tienes cuenta?", ["Iniciar sesión", "Registrarme"], horizontal=True, key="agenda_modo")
+
+        if modo == "Iniciar sesión":
+            p_tel = st.text_input("Teléfono", key="agenda_tel_input_login")
+            p_pw  = st.text_input("Contraseña", type="password", key="agenda_pass_input_login")
+            if st.button("Entrar (Agenda)", use_container_width=True, key="agenda_login_btn"):
+                user = login_paciente(p_tel, p_pw)
+                if user:
+                    st.session_state.role = "paciente_agenda"
+                    st.session_state.paciente = user  # dict con id, nombre, telefono
+                    st.success(f"Bienvenid@, {user['nombre']} ✅")
+                    st.rerun()
+                else:
+                    st.error("Teléfono o contraseña incorrectos.")
+
+        else:  # Registrarme
+            nombre = st.text_input("Nombre completo", key="agenda_nombre_reg")
+            p_tel_reg = st.text_input("Teléfono", key="agenda_tel_reg")
+            pw1 = st.text_input("Contraseña", type="password", key="agenda_pw1")
+            pw2 = st.text_input("Repite tu contraseña", type="password", key="agenda_pw2")
+
+            if st.button("Registrarme", use_container_width=True, key="agenda_reg_btn"):
+                if not (nombre.strip() and p_tel_reg.strip() and pw1 and pw2):
+                    st.error("Todos los campos son obligatorios.")
+                elif pw1 != pw2:
+                    st.error("Las contraseñas no coinciden.")
+                else:
+                    try:
+                        pid = registrar_paciente(nombre, p_tel_reg, pw1)
+                        # Autologin
+                        st.session_state.role = "paciente_agenda"
+                        st.session_state.paciente = {
+                            "id": int(pid),
+                            "nombre": nombre.strip(),
+                            "telefono": normalize_tel(p_tel_reg),
+                        }
+                        st.success("Cuenta creada ✅. ¡Bienvenid@!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"No se pudo crear la cuenta: {e}")
+
+    # --- Paciente (Portal RO por token) ---
     with tabs[2]:
         token_from_url = st.query_params.get("token", [None])[0] if hasattr(st, "query_params") else None
         p_token = st.text_input("Token (o ?token=...)", value=token_from_url or "", key="portal_token_input")
-        pat_ro_login = st.button("Entrar (Solo lectura)", use_container_width=True, key="portal_login_btn")
+        if st.button("Entrar (Solo lectura)", use_container_width=True, key="portal_login_btn"):
+            d = df_sql("SELECT * FROM pacientes WHERE token=%s", (p_token.strip(),)) if p_token.strip() else pd.DataFrame()
+            if d.empty:
+                st.error("Token inválido o vacío")
+            else:
+                st.session_state.role = "paciente_ro"
+                st.session_state.paciente = dict(d.iloc[0])
+                st.success(f"Bienvenido, {d.iloc[0]['nombre']} ✅")
+                st.rerun()
+
 
 if "role" not in st.session_state: st.session_state.role = None
 if "paciente" not in st.session_state: st.session_state.paciente = None
