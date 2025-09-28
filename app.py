@@ -30,16 +30,46 @@ div[data-testid="stExpander"] > details {
 }
 
 
-/* Inputs */
-.stTextInput > div > div > input,
+/* ===== Inputs (cubre text/number/password/date/time/select/textarea) ===== */
+.stTextInput input,
 .stNumberInput input,
+.stDateInput input,
+.stTimeInput input,
 .stTextArea textarea,
-.stSelectbox > div > div {
-  background: #F2F2F2 !important;   /* gris claro */
-  color: #111827 !important;        /* texto oscuro para contraste */
+.stSelectbox [data-baseweb="select"] > div,
+.stMultiSelect [data-baseweb="select"] > div,
+[data-baseweb="input"] input,
+textarea,
+input[type="text"],
+input[type="password"],
+input[type="email"],
+input[type="tel"],
+input[type="number"] {
+  background: #F2F2F2 !important;    /* gris claro y descansado */
+  color: #111827 !important;          /* texto oscuro */
   border: 1px solid #D1D5DB !important; /* gris medio */
   border-radius: 10px !important;
+  box-shadow: none !important;
 }
+
+/* Placeholders más suaves */
+::placeholder { color: #6B7280 !important; }
+
+/* Al enfocar: borde guinda sutil + halo tenue */
+.stTextInput input:focus,
+.stNumberInput input:focus,
+.stDateInput input:focus,
+.stTimeInput input:focus,
+.stTextArea textarea:focus,
+.stSelectbox [data-baseweb="select"] > div:focus-within,
+.stMultiSelect [data-baseweb="select"] > div:focus-within,
+[data-baseweb="input"] input:focus,
+textarea:focus {
+  border-color: #A02C4A !important;           /* guinda */
+  box-shadow: 0 0 0 3px rgba(160,44,74,0.15) !important;
+  outline: none !important;
+}
+
 
 /* Botones primarios */
 button[kind="primary"] {

@@ -9,12 +9,6 @@ from modules.core import (
     delete_foto, delete_medicion_dia
 )
 import pandas as pd
-from modules.theme import CUSTOM_CSS  # o donde tengas la constante
-
-
-st.markdown(f"<style>{CUSTOM_CSS}</style>", unsafe_allow_html=True)
-
-
 
 st.set_page_config(page_title="Carmen — Pacientes", page_icon="🧾", layout="wide")
 

@@ -7,9 +7,6 @@ from modules.core import (
     generar_slots, citas_por_dia, crear_o_encontrar_paciente, exec_sql,
     actualizar_cita, eliminar_cita
 )
-from modules.theme import CUSTOM_CSS  # o donde tengas la constante
-
-st.markdown(f"<style>{CUSTOM_CSS}</style>", unsafe_allow_html=True)
 
 
 st.set_page_config(page_title="Carmen — Citas", page_icon="📆", layout="wide")
