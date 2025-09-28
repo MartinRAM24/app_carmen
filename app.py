@@ -35,9 +35,9 @@ div[data-testid="stExpander"] > details {
 .stNumberInput input,
 .stTextArea textarea,
 .stSelectbox > div > div {
-  background: #FFFFFF !important;
-  color: #111827 !important;
-  border: 1px solid #E5E7EB !important;
+  background: #F2F2F2 !important;   /* gris claro */
+  color: #111827 !important;        /* texto oscuro para contraste */
+  border: 1px solid #D1D5DB !important; /* gris medio */
   border-radius: 10px !important;
 }
 
