@@ -1,8 +1,11 @@
 # pages/1_Paciente_Dashboard.py
 import streamlit as st
 from datetime import date, datetime, timedelta
-from modules.core import (generar_slots, slots_ocupados, agendar_cita_autenticado,
-                          df_sql, to_drive_preview)
+from modules.core import (
+    generar_slots, slots_ocupados, agendar_cita_autenticado,
+    df_sql, to_drive_preview,
+    drive_image_view_url, drive_image_download_url)
+
 
 st.set_page_config(page_title="Paciente — Dashboard", page_icon="🧑", layout="wide")
 
@@ -61,6 +64,40 @@ with c2:
             with st.expander("Vista previa"):
                 if rpdf: st.components.v1.iframe(to_drive_preview(rpdf), height=360)
                 if ppdf: st.components.v1.iframe(to_drive_preview(ppdf), height=360)
+
+    with st.expander("Ver mis fotos", expanded=False):
+        gal = df_sql(
+            "SELECT fecha, drive_file_id, filename FROM fotos WHERE paciente_id=%s ORDER BY fecha DESC",
+            (pid,),
+        )
+        if gal.empty:
+            st.info("Aún no tienes fotos.")
+        else:
+            # Agrupa por fecha y muestra en cuadrícula
+            fechas = sorted(gal["fecha"].unique(), reverse=True)
+            fecha_sel = st.selectbox("Fecha", fechas, key=f"pac_fotos_fecha_{pid}")
+            sub = gal[gal["fecha"] == fecha_sel].reset_index(drop=True).to_dict("records")
+
+            def _chunk(lst, n):
+                for i in range(0, len(lst), n):
+                    yield lst[i : i + n]
+
+            for fila4 in _chunk(sub, 4):
+                cols = st.columns(4, gap="medium")
+                for i, r in enumerate(fila4):
+                    with cols[i]:
+                        fid = (r.get("drive_file_id") or "").strip()
+                        if not fid:
+                            continue
+                        img_url = drive_image_view_url(fid)
+                        dl_url  = drive_image_download_url(fid)
+                        st.markdown(
+                            f'<div style="background:#111;border-radius:12px;overflow:hidden;display:flex;justify-content:center;"><img src="{img_url}" style="height:220px;object-fit:contain;"></div>',
+                            unsafe_allow_html=True,
+                        )
+                        st.caption(r.get("filename") or "")
+                        st.link_button("⬇️ Descargar", dl_url, key=f"pac_foto_dl_{pid}_{fid}")
+
 
 st.divider()
 if st.button("Cerrar sesión"):
