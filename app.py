@@ -58,6 +58,61 @@ def exec_sql(q_ps: str, p: tuple = ()):
 def df_sql(q_ps: str, p: tuple = ()):
     return pd.read_sql_query(q_ps, conn(), params=p)
 
+# ====== Eliminar archivos y fotos (DB + Drive) ======
+
+def delete_drive_file(file_id: str, send_to_trash: bool = True) -> bool:
+    """
+    Elimina (o envía a papelera) un archivo en Google Drive.
+    Devuelve True si no hubo excepción.
+    """
+    try:
+        drv = get_drive()
+        if send_to_trash:
+            # Enviar a papelera (seguro en Unidades Compartidas)
+            drv.files().update(
+                fileId=file_id,
+                body={"trashed": True},
+                supportsAllDrives=True
+            ).execute()
+        else:
+            # Borrado permanente
+            drv.files().delete(
+                fileId=file_id,
+                supportsAllDrives=True
+            ).execute()
+        return True
+    except Exception as e:
+        st.info(f"[Drive] No se pudo eliminar el archivo {file_id}: {e}")
+        return False
+
+
+def delete_foto(photo_id: int, send_to_trash: bool = True) -> bool:
+    """
+    Borra la fila en 'fotos' y, si hay drive_file_id, elimina el archivo de Drive.
+    """
+    fila = df_sql("SELECT drive_file_id FROM fotos WHERE id = %s", (photo_id,))
+    if fila.empty:
+        st.warning("No se encontró la foto en la base.")
+        return False
+
+    drive_id = (fila.loc[0, "drive_file_id"] or "").strip()
+
+    # Primero intenta eliminar en Drive (si existe)
+    if drive_id:
+        delete_drive_file(drive_id, send_to_trash=send_to_trash)
+
+    # Luego elimina el registro en DB
+    exec_sql("DELETE FROM fotos WHERE id = %s", (photo_id,))
+
+    # Limpia caches para refrescar galerías
+    try:
+        st.cache_data.clear()
+    except Exception:
+        pass
+
+    return True
+
+
 # =========================
 # Migración mínima (unifica modelos)
 # =========================
