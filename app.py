@@ -192,6 +192,65 @@ setup_db()
 # =========================
 # Utils comunes
 # =========================
+def delete_medicion_dia(
+    pid: int,
+    fecha_str: str,
+    remove_drive_folder: bool = True,
+    send_to_trash: bool = True,
+    delete_cita_row: bool = False,
+) -> None:
+    """
+    Elimina TODO lo asociado a un día:
+      - Fotos de ese día (DB + Drive)
+      - Enlaces a PDFs (rutina/plan) en 'mediciones'
+      - Fila de 'mediciones' del día
+      - (opcional) Carpeta de la cita en Drive (YYYY-MM-DD)
+      - (opcional) Fila de 'citas' (si existe misma fecha)
+    """
+    # 1) Identificar carpeta de la cita (si está guardada)
+    m = df_sql(
+        "SELECT drive_cita_folder_id FROM mediciones WHERE paciente_id=%s AND fecha=%s",
+        (pid, fecha_str),
+    )
+    cita_folder_id = (m.loc[0, "drive_cita_folder_id"].strip()
+                      if not m.empty and (m.loc[0, "drive_cita_folder_id"] or "").strip()
+                      else None)
+
+    # 2) Borrar fotos del día (DB + Drive)
+    fotos = df_sql("SELECT id, drive_file_id FROM fotos WHERE paciente_id=%s AND fecha=%s", (pid, fecha_str))
+    for _, r in fotos.iterrows():
+        if r.get("drive_file_id"):
+            delete_drive_file(str(r["drive_file_id"]), send_to_trash=send_to_trash)
+        exec_sql("DELETE FROM fotos WHERE id=%s", (int(r["id"]),))
+
+    # 3) Borrar fila de mediciones (y con ello limpiamos rutina/plan)
+    exec_sql("DELETE FROM mediciones WHERE paciente_id=%s AND fecha=%s", (pid, fecha_str))
+
+    # 4) (opcional) Borrar carpeta de la cita en Drive
+    if remove_drive_folder and cita_folder_id:
+        try:
+            drv = get_drive()
+            if send_to_trash:
+                drv.files().update(fileId=cita_folder_id, body={"trashed": True}, supportsAllDrives=True).execute()
+            else:
+                drv.files().delete(fileId=cita_folder_id, supportsAllDrives=True).execute()
+        except Exception as e:
+            st.info(f"[Drive] No se pudo eliminar la carpeta de la cita ({cita_folder_id}): {e}")
+
+    # 5) (opcional) Borrar fila de citas (si agendaste en 'citas' con esa fecha)
+    if delete_cita_row:
+        try:
+            exec_sql("DELETE FROM citas WHERE paciente_id=%s AND fecha=%s", (pid, fecha_str))
+        except Exception:
+            # Puede no existir la cita o no tener paciente_id; ignoramos
+            pass
+
+    # 6) Limpia caché para refrescar tablas
+    try:
+        st.cache_data.clear()
+    except Exception:
+        pass
+
 def normalize_tel(t: str) -> str:
     return re.sub(r'[-\s]+', '', (t or '').strip().lower())
 
@@ -1104,6 +1163,36 @@ def view_admin():
             st.info("Sin mediciones aún.")
         else:
             st.dataframe(hist, use_container_width=True, hide_index=True)
+
+        st.divider()
+        st.markdown("### 🗑️ Eliminar medición de un día")
+
+        # Lista de fechas disponibles del paciente
+        fechas_disp = df_sql("SELECT fecha FROM mediciones WHERE paciente_id=%s ORDER BY fecha DESC", (pid,))
+        if fechas_disp.empty:
+            st.caption("No hay días con mediciones.")
+        else:
+            fecha_del = st.selectbox("Fecha a eliminar", fechas_disp["fecha"].tolist(), key=f"del_med_fecha_{pid}")
+            col_opts = st.columns(3)
+            with col_opts[0]:
+                opt_rm_drive = st.checkbox("Eliminar carpeta de Drive de esa fecha", value=True,
+                                           key=f"del_med_rm_drive_{pid}")
+            with col_opts[1]:
+                opt_trash = st.checkbox("Enviar a Papelera (recomendado)", value=True, key=f"del_med_trash_{pid}")
+            with col_opts[2]:
+                opt_del_cita = st.checkbox("Eliminar cita del día", value=False, key=f"del_med_cita_{pid}")
+
+            confirm = st.checkbox("Confirmo que deseo eliminar esa medición", key=f"del_med_confirm_{pid}")
+            if st.button("🗑️ Eliminar medición del día", disabled=not confirm, key=f"del_med_btn_{pid}"):
+                delete_medicion_dia(
+                    pid=pid,
+                    fecha_str=str(fecha_del),
+                    remove_drive_folder=opt_rm_drive,
+                    send_to_trash=opt_trash,
+                    delete_cita_row=opt_del_cita,
+                )
+                st.success(f"Medición del {fecha_del} eliminada ✅")
+                st.rerun()
 
     # ===== PDFs =====
     with tab_pdfs:
