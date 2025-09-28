@@ -17,7 +17,10 @@ d1 = df_sql("""
     ORDER BY c.hora
 """)
 st.subheader("Hoy")
-st.dataframe(d1, use_container_width=True) if not d1.empty else st.info("Sin citas hoy.")
+if not d1.empty:
+    st.dataframe(d1, use_container_width=True)
+else:
+    st.info("Sin citas hoy.")
 
 # Siguientes 7 días
 d7 = df_sql("""
@@ -27,7 +30,10 @@ d7 = df_sql("""
     ORDER BY c.fecha, c.hora
 """)
 st.subheader("Próxima semana")
-st.dataframe(d7, use_container_width=True) if not d7.empty else st.info("Sin citas en la semana.")
+if not d7.empty:
+    st.dataframe(d7, use_container_width=True)
+else:
+    st.info("Sin citas en la semana.")
 
 st.divider()
 st.page_link("pages/3_Carmen_Pacientes.py", label="Ir a Gestión de Pacientes →")
