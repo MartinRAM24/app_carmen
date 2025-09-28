@@ -102,8 +102,8 @@ st.subheader("📏 Mis mediciones")
 meds = df_sql("""
     SELECT fecha,
            peso_kg AS "Peso (kg)",
-           grasa_pct AS "% Grasa",
-           musculo_pct AS "% Músculo",
+           grasa_pct AS "Grasa",
+           musculo_pct AS "Músculo",
            brazo_rest AS "Brazo reposo (cm)",
            brazo_flex AS "Brazo flex (cm)",
            pecho_rest AS "Pecho reposo (cm)",
