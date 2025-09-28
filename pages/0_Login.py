@@ -2,7 +2,7 @@
 import streamlit as st
 from modules.core import is_admin_ok, login_paciente, registrar_paciente, normalize_tel
 
-st.image("assets/Logo.png", width=120)
+st.image("assets/Logo.png", width=200)
 st.title("Carmen Coach")
 st.caption("Bienvenida/o. Elige cómo quieres entrar.")
 
