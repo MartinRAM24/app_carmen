@@ -1085,6 +1085,6 @@ if role == "admin":
 elif role == "paciente_agenda":
     view_paciente_dashboard()
 else:
-    st.info("Elige un modo de acceso en la barra lateral (Admin / Paciente Agenda / Paciente RO).")
+    st.info("Elige un modo de acceso en la barra lateral (Admin / Portal Pacientes).")
 
 
