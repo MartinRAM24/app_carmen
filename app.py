@@ -1071,7 +1071,7 @@ def view_admin():
                             st.markdown(
                                 f'<div style="background:#111;border-radius:12px;overflow:hidden;display:flex;justify-content:center;"><img src="{img_url}" style="height:220px;object-fit:contain;"></div>',
                                 unsafe_allow_html=True)
-                            if dl_url: st.link_button("⬇️ Descargar", dl_url, key=f"dl_{pid}_{r['id']}")
+                            if dl_url: st.link_button("⬇️ Descargar", dl_url)
 
 
 # =========================
