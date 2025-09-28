@@ -1079,12 +1079,20 @@ def view_admin():
 # =========================
 st.title("🩺 Carmen Coach — Agenda & Pacientes")
 
+# Inicialización segura
+if "role" not in st.session_state:
+    st.session_state.role = None
+if "paciente" not in st.session_state:
+    st.session_state.paciente = None
+
 role = st.session_state.role
+
 if role == "admin":
     view_admin()
-elif role == "paciente_agenda":
-    view_paciente_dashboard()
+elif role == "paciente":
+    view_paciente_dashboard()   # <— NUEVA vista unificada del paciente
 else:
-    st.info("Elige un modo de acceso en la barra lateral (Admin / Portal Pacientes).")
+    st.info("Elige un modo de acceso en la barra lateral (Admin / Paciente).")
+
 
 
