@@ -39,32 +39,6 @@ with c1:
             except Exception as e:
                 st.error(str(e))
 
-with c2:
-    st.subheader("🧾 Mis datos y archivos")
-    with st.expander("Ver mis datos", expanded=False):
-        d = df_sql("SELECT * FROM pacientes WHERE id=%s", (pid,))
-        if not d.empty:
-            r = d.iloc[0]
-            st.write("**Nombre**:", r.get("nombre","—"))
-            st.write("**Teléfono**:", r.get("telefono","—"))
-            st.write("**Fecha nac.**:", r.get("fecha_nac") or "—")
-            st.write("**Correo**:", r.get("correo") or "—")
-            st.write("**Notas**:"); st.write(r.get("notas") or "—")
-
-    with st.expander("Ver mis PDFs", expanded=False):
-        citas = df_sql("SELECT fecha, rutina_pdf, plan_pdf FROM mediciones WHERE paciente_id=%s ORDER BY fecha DESC", (pid,))
-        if citas.empty: st.info("Aún no tienes PDFs.")
-        else:
-            fecha_sel = st.selectbox("Fecha", citas["fecha"].tolist())
-            row = citas[citas["fecha"] == fecha_sel].iloc[0]
-            rpdf, ppdf = (row["rutina_pdf"] or "").strip(), (row["plan_pdf"] or "").strip()
-            cL, cR = st.columns(2)
-            with cL: st.link_button("Abrir Rutina (PDF)", rpdf, disabled=(not bool(rpdf)))
-            with cR: st.link_button("Abrir Plan (PDF)", ppdf, disabled=(not bool(ppdf)))
-            with st.expander("Vista previa"):
-                if rpdf: st.components.v1.iframe(to_drive_preview(rpdf), height=360)
-                if ppdf: st.components.v1.iframe(to_drive_preview(ppdf), height=360)
-
     with st.expander("Ver mis fotos", expanded=False):
         gal = df_sql(
             "SELECT fecha, drive_file_id, filename FROM fotos WHERE paciente_id=%s ORDER BY fecha DESC",
@@ -96,6 +70,34 @@ with c2:
                             unsafe_allow_html=True,
                         )
                         st.link_button("⬇️ Descargar", dl_url)
+
+with c2:
+    st.subheader("🧾 Mis datos y archivos")
+    with st.expander("Ver mis datos", expanded=False):
+        d = df_sql("SELECT * FROM pacientes WHERE id=%s", (pid,))
+        if not d.empty:
+            r = d.iloc[0]
+            st.write("**Nombre**:", r.get("nombre","—"))
+            st.write("**Teléfono**:", r.get("telefono","—"))
+            st.write("**Fecha nac.**:", r.get("fecha_nac") or "—")
+            st.write("**Correo**:", r.get("correo") or "—")
+            st.write("**Notas**:"); st.write(r.get("notas") or "—")
+
+    with st.expander("Ver mis PDFs", expanded=False):
+        citas = df_sql("SELECT fecha, rutina_pdf, plan_pdf FROM mediciones WHERE paciente_id=%s ORDER BY fecha DESC", (pid,))
+        if citas.empty: st.info("Aún no tienes PDFs.")
+        else:
+            fecha_sel = st.selectbox("Fecha", citas["fecha"].tolist())
+            row = citas[citas["fecha"] == fecha_sel].iloc[0]
+            rpdf, ppdf = (row["rutina_pdf"] or "").strip(), (row["plan_pdf"] or "").strip()
+            cL, cR = st.columns(2)
+            with cL: st.link_button("Abrir Rutina (PDF)", rpdf, disabled=(not bool(rpdf)))
+            with cR: st.link_button("Abrir Plan (PDF)", ppdf, disabled=(not bool(ppdf)))
+            with st.expander("Vista previa"):
+                if rpdf: st.components.v1.iframe(to_drive_preview(rpdf), height=360)
+                if ppdf: st.components.v1.iframe(to_drive_preview(ppdf), height=360)
+
+
 
 
 st.divider()
