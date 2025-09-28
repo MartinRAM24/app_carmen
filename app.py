@@ -430,7 +430,7 @@ def asociar_medicion_a_cita(pid: int, fecha_str: str):
 # =========================
 with st.sidebar:
     st.markdown("## Acceso")
-    tabs = st.tabs(["👩‍⚕️ Admin", "🧑 Paciente (Agenda)", "🧑 Paciente (Portal RO)"])
+    tabs = st.tabs(["👩‍⚕️ Admin", "🧑 Paciente"])
 
     # --- Admin ---
     with tabs[0]:
@@ -445,17 +445,17 @@ with st.sidebar:
             else:
                 st.error("Credenciales inválidas")
 
-    # --- Paciente (Agenda): Login / Registro ---
+    # --- Paciente: Login / Registro ---
     with tabs[1]:
-        modo = st.radio("¿Tienes cuenta?", ["Iniciar sesión", "Registrarme"], horizontal=True, key="agenda_modo")
+        modo = st.radio("¿Tienes cuenta?", ["Iniciar sesión", "Registrarme"], horizontal=True, key="pac_modo")
 
         if modo == "Iniciar sesión":
-            p_tel = st.text_input("Teléfono", key="agenda_tel_input_login")
-            p_pw  = st.text_input("Contraseña", type="password", key="agenda_pass_input_login")
-            if st.button("Entrar (Agenda)", use_container_width=True, key="agenda_login_btn"):
+            p_tel = st.text_input("Teléfono", key="pac_tel_login")
+            p_pw  = st.text_input("Contraseña", type="password", key="pac_pass_login")
+            if st.button("Entrar", use_container_width=True, key="pac_login_btn"):
                 user = login_paciente(p_tel, p_pw)
                 if user:
-                    st.session_state.role = "paciente_agenda"
+                    st.session_state.role = "paciente"
                     st.session_state.paciente = user  # dict con id, nombre, telefono
                     st.success(f"Bienvenid@, {user['nombre']} ✅")
                     st.rerun()
@@ -463,12 +463,12 @@ with st.sidebar:
                     st.error("Teléfono o contraseña incorrectos.")
 
         else:  # Registrarme
-            nombre = st.text_input("Nombre completo", key="agenda_nombre_reg")
-            p_tel_reg = st.text_input("Teléfono", key="agenda_tel_reg")
-            pw1 = st.text_input("Contraseña", type="password", key="agenda_pw1")
-            pw2 = st.text_input("Repite tu contraseña", type="password", key="agenda_pw2")
+            nombre = st.text_input("Nombre completo", key="pac_nombre_reg")
+            p_tel_reg = st.text_input("Teléfono", key="pac_tel_reg")
+            pw1 = st.text_input("Contraseña", type="password", key="pac_pw1")
+            pw2 = st.text_input("Repite tu contraseña", type="password", key="pac_pw2")
 
-            if st.button("Registrarme", use_container_width=True, key="agenda_reg_btn"):
+            if st.button("Registrarme", use_container_width=True, key="pac_reg_btn"):
                 if not (nombre.strip() and p_tel_reg.strip() and pw1 and pw2):
                     st.error("Todos los campos son obligatorios.")
                 elif pw1 != pw2:
@@ -477,7 +477,7 @@ with st.sidebar:
                     try:
                         pid = registrar_paciente(nombre, p_tel_reg, pw1)
                         # Autologin
-                        st.session_state.role = "paciente_agenda"
+                        st.session_state.role = "paciente"
                         st.session_state.paciente = {
                             "id": int(pid),
                             "nombre": nombre.strip(),
@@ -486,21 +486,12 @@ with st.sidebar:
                         st.success("Cuenta creada ✅. ¡Bienvenid@!")
                         st.rerun()
                     except Exception as e:
-                        st.error(f"No se pudo crear la cuenta: {e}")
+                        from psycopg import errors as pg_errors
+                        if isinstance(e, pg_errors.UniqueViolation):
+                            st.error("Ese teléfono ya está registrado. Intenta iniciar sesión.")
+                        else:
+                            st.error(f"No se pudo crear la cuenta: {e}")
 
-    # --- Paciente (Portal RO por token) ---
-    with tabs[2]:
-        token_from_url = st.query_params.get("token", [None])[0] if hasattr(st, "query_params") else None
-        p_token = st.text_input("Token (o ?token=...)", value=token_from_url or "", key="portal_token_input")
-        if st.button("Entrar (Solo lectura)", use_container_width=True, key="portal_login_btn"):
-            d = df_sql("SELECT * FROM pacientes WHERE token=%s", (p_token.strip(),)) if p_token.strip() else pd.DataFrame()
-            if d.empty:
-                st.error("Token inválido o vacío")
-            else:
-                st.session_state.role = "paciente_ro"
-                st.session_state.paciente = dict(d.iloc[0])
-                st.success(f"Bienvenido, {d.iloc[0]['nombre']} ✅")
-                st.rerun()
 
 
 if "role" not in st.session_state: st.session_state.role = None
@@ -509,44 +500,130 @@ if "paciente" not in st.session_state: st.session_state.paciente = None
 # =========================
 # Vista: 📅 Agenda (Paciente)
 # =========================
-def view_agenda_paciente():
-    st.header("📅 Agenda tu cita")
+def view_paciente_dashboard():
     p = st.session_state.paciente
-    pid, nombre, tel = int(p["id"]), str(p["nombre"]), str(p["telefono"])
-    st.success(f"Agendando como: {nombre} — {tel} (ID {pid})")
-    if st.button("Cerrar sesión paciente (agenda)"):
-        st.session_state.role = None; st.session_state.paciente = None; st.rerun()
+    pid = int(p["id"])
+    st.subheader(f"🧑 Portal de {p['nombre']}")
 
-    min_day = date.today() + timedelta(days=BLOQUEO_DIAS_MIN)
-    fecha = st.date_input("Elige el día (desde el tercer día)", value=min_day, min_value=min_day)
+    # Cerrar sesión
+    if st.button("Cerrar sesión", key="pac_logout_btn"):
+        st.session_state.role = None
+        st.session_state.paciente = None
+        st.success("Sesión cerrada.")
+        st.rerun()
 
-    if not is_fecha_permitida(fecha):
-        st.error("Solo puedes agendar a partir del tercer día."); st.stop()
-
-    ocupados = slots_ocupados(fecha)
-    libres = [t for t in generar_slots(fecha) if t not in ocupados]
-    slot_sel = st.selectbox("Horario disponible", [t.strftime("%H:%M") for t in libres]) if libres else None
-    if not libres:
-        if fecha.weekday() == 6: st.warning("Domingo no se agenda. Elige L–S.")
-        else: st.warning("No hay horarios libres en este día.")
-    nota = st.text_area("Motivo o nota (opcional)")
-    if st.button("📝 Confirmar cita", disabled=(slot_sel is None)):
-        try:
-            if slot_sel is None:
-                st.error("Selecciona un horario.")
+    # ---------- Agendar (expander arriba) ----------
+    with st.expander("📅 Agendar una nueva cita", expanded=False):
+        min_day = date.today() + timedelta(days=BLOQUEO_DIAS_MIN)
+        fecha = st.date_input("Día disponible (desde el tercer día)", value=min_day, min_value=min_day, key="pac_agenda_fecha")
+        ocupados = slots_ocupados(fecha)
+        libres = [t for t in generar_slots(fecha) if t not in ocupados]
+        if libres:
+            slot_sel = st.selectbox("Horario", [t.strftime("%H:%M") for t in libres], key="pac_agenda_hora")
+        else:
+            slot_sel = None
+            if fecha.weekday() == 6:
+                st.warning("Domingo no se agenda. Elige L–S.")
             else:
-                h = datetime.strptime(slot_sel, "%H:%M").time()
-                agendar_cita_autenticado(fecha, h, paciente_id=pid, nota=nota or None)
-                st.success("¡Cita agendada! ✨"); st.balloons()
-                try: st.cache_data.clear()
-                except: pass
-                st.rerun()
-        except ValueError as ve:
-            st.error(str(ve))
-        except pg_errors.UniqueViolation:
-            st.error("Ese horario ya fue tomado. Intenta con otro.")
-        except Exception as e:
-            st.error(f"No se pudo agendar: {e}")
+                st.warning("No hay horarios libres en este día.")
+        nota = st.text_area("Motivo o nota (opcional)", key="pac_agenda_nota")
+        if st.button("📝 Confirmar cita", disabled=(slot_sel is None), key="pac_agenda_confirm"):
+            try:
+                if slot_sel is None:
+                    st.error("Selecciona un horario.")
+                else:
+                    h = datetime.strptime(slot_sel, "%H:%M").time()
+                    agendar_cita_autenticado(fecha, h, paciente_id=pid, nota=nota or None)
+                    st.success("¡Cita agendada! ✨")
+                    st.balloons()
+                    try:
+                        st.cache_data.clear()
+                    except:
+                        pass
+                    st.rerun()
+            except ValueError as ve:
+                st.error(str(ve))
+            except pg_errors.UniqueViolation:
+                st.error("Ese horario ya fue tomado. Intenta otro.")
+
+    st.divider()
+
+    # ---------- Datos del perfil (solo lectura resumida) ----------
+    with st.expander("🧾 Mis datos"):
+        datos = df_sql("SELECT * FROM pacientes WHERE id=%s", (pid,))
+        if datos.empty:
+            st.info("No se encontraron datos del perfil.")
+        else:
+            row = datos.iloc[0]
+            c1, c2 = st.columns(2)
+            with c1:
+                st.write("**Nombre:**", row.get("nombre","—"))
+                st.write("**Fecha de nacimiento:**", row.get("fecha_nac") or "—")
+                st.write("**Teléfono:**", row.get("telefono") or "—")
+            with c2:
+                st.write("**Correo:**", row.get("correo") or "—")
+                st.write("**Notas:**"); st.write(row.get("notas") or "—")
+
+    # ---------- Tabs de contenido ----------
+    tab_pdfs, tab_medidas, tab_fotos = st.tabs(["📂 PDFs", "📏 Mediciones", "🖼️ Fotos"])
+
+    # PDFs
+    with tab_pdfs:
+        citas = df_sql("SELECT fecha, rutina_pdf, plan_pdf FROM mediciones WHERE paciente_id=%s ORDER BY fecha DESC", (pid,))
+        if citas.empty:
+            st.info("Aún no tienes PDFs registrados.")
+        else:
+            fecha_sel = st.selectbox("Fecha de la cita", citas["fecha"].tolist(), key=f"pac_pdf_fecha_{pid}")
+            actual = citas.loc[citas["fecha"] == fecha_sel].iloc[0]
+            r, pl = (actual["rutina_pdf"] or "").strip(), (actual["plan_pdf"] or "").strip()
+            c1, c2 = st.columns(2)
+            with c1: st.link_button("🔗 Abrir Rutina (PDF)", r, disabled=(not bool(r)), key=f"pac_open_rut_{pid}")
+            with c2: st.link_button("🔗 Abrir Plan (PDF)", pl, disabled=(not bool(pl)), key=f"pac_open_plan_{pid}")
+            with st.expander("👁️ Vista previa (Drive)"):
+                if r: st.components.v1.iframe(to_drive_preview(r), height=360)
+                if pl: st.components.v1.iframe(to_drive_preview(pl), height=360)
+
+    # Mediciones
+    with tab_medidas:
+        hist = df_sql("""
+            SELECT fecha,
+                   peso_kg AS peso_KG, grasa_pct AS grasa, musculo_pct AS musculo,
+                   brazo_rest AS brazo_rest_CM, brazo_flex AS brazo_flex_CM,
+                   pecho_rest AS pecho_rest_CM, pecho_flex AS pecho_flex_CM,
+                   cintura_cm AS cintura_CM, cadera_cm AS cadera_CM,
+                   pierna_cm AS pierna_CM, pantorrilla_cm AS pantorrilla_CM,
+                   notas
+            FROM mediciones WHERE paciente_id=%s ORDER BY fecha DESC
+        """, (pid,))
+        if hist.empty:
+            st.info("Aún no hay mediciones registradas.")
+        else:
+            st.dataframe(hist, use_container_width=True, hide_index=True)
+
+    # Fotos
+    with tab_fotos:
+        gal = df_sql("SELECT fecha, drive_file_id, filename FROM fotos WHERE paciente_id=%s ORDER BY fecha DESC", (pid,))
+        if gal.empty:
+            st.info("Sin fotos aún.")
+        else:
+            def _chunk(lst, n):
+                for i in range(0, len(lst), n): yield lst[i : i + n]
+            for fch in sorted(gal["fecha"].unique(), reverse=True):
+                st.markdown(f"### 🗓️ {fch}")
+                fila = gal[gal["fecha"] == fch].reset_index(drop=True).to_dict("records")
+                for fila4 in _chunk(fila, 4):
+                    cols = st.columns(4, gap="medium")
+                    for i, r in enumerate(fila4):
+                        with cols[i]:
+                            img_url = drive_image_view_url(r["drive_file_id"]) if r.get("drive_file_id") else ""
+                            dl_url = drive_image_download_url(r["drive_file_id"]) if r.get("drive_file_id") else None
+                            st.markdown(
+                                f'<div style="background:#111;border-radius:12px;overflow:hidden;display:flex;justify-content:center;"><img src="{img_url}" style="height:220px;object-fit:contain;"></div>',
+                                unsafe_allow_html=True
+                            )
+                            if dl_url:
+                                st.link_button("⬇️ Descargar", dl_url, key=f"pac_dl_{pid}_{i}_{fch}")
+
 
 # =========================
 # Vista: 🧑‍⚕️ Admin
@@ -953,76 +1030,6 @@ def view_admin():
                                 f'<div style="background:#111;border-radius:12px;overflow:hidden;display:flex;justify-content:center;"><img src="{img_url}" style="height:220px;object-fit:contain;"></div>',
                                 unsafe_allow_html=True)
                             if dl_url: st.link_button("⬇️ Descargar", dl_url, key=f"dl_{pid}_{r['id']}")
-
-
-def view_paciente_ro():
-    pac = st.session_state.paciente
-    st.subheader(f"🧑 Portal del paciente — {pac['nombre']}")
-    st.caption("Vista de solo lectura. Si necesitas cambios, contacta a tu coach.")
-
-    if st.button("Cerrar sesión (Portal)", key="portal_logout_btn"):
-        st.session_state.role = None
-        st.session_state.paciente = None
-        st.success("Sesión cerrada."); st.rerun()
-
-    with st.expander("🧾 Datos del perfil"):
-        c1, c2 = st.columns(2)
-        with c1:
-            st.write("**Nombre:**", pac.get("nombre","—"))
-            st.write("**Fecha de nacimiento:**", pac.get("fecha_nac") or "—")
-            st.write("**Teléfono:**", pac.get("telefono") or "—")
-        with c2:
-            st.write("**Correo:**", pac.get("correo") or "—")
-            st.write("**Notas:**"); st.write(pac.get("notas") or "—")
-
-    st.markdown("### 📂 Tus PDFs de citas")
-    citas = df_sql("SELECT fecha, rutina_pdf, plan_pdf FROM mediciones WHERE paciente_id=%s ORDER BY fecha DESC", (int(pac["id"]),))
-    if citas.empty:
-        st.info("Aún no tienes PDFs registrados.")
-    else:
-        fecha_sel = st.selectbox("Fecha de la cita", citas["fecha"].tolist(), key=f"ro_pdf_fecha_{pac['id']}")
-        actual = citas.loc[citas["fecha"] == fecha_sel].iloc[0]
-        r, p = (actual["rutina_pdf"] or "").strip(), (actual["plan_pdf"] or "").strip()
-        c1, c2 = st.columns(2)
-        with c1: st.link_button("🔗 Abrir Rutina (PDF)", r, disabled=(not bool(r)), key=f"ro_open_rut_{pac['id']}")
-        with c2: st.link_button("🔗 Abrir Plan (PDF)", p, disabled=(not bool(p)), key=f"ro_open_plan_{pac['id']}")
-        with st.expander("👁️ Vista previa (Drive)"):
-            if r: st.components.v1.iframe(to_drive_preview(r), height=360)
-            if p: st.components.v1.iframe(to_drive_preview(p), height=360)
-
-    st.markdown("### 📏 Tus mediciones")
-    hist_ro = df_sql("""
-        SELECT fecha,
-               peso_kg AS peso_KG, grasa_pct AS grasa, musculo_pct AS musculo,
-               brazo_rest AS brazo_rest_CM, brazo_flex AS brazo_flex_CM,
-               pecho_rest AS pecho_rest_CM, pecho_flex AS pecho_flex_CM,
-               cintura_cm AS cintura_CM, cadera_cm AS cadera_CM,
-               pierna_cm AS pierna_CM, pantorrilla_cm AS pantorrilla_CM, notas
-        FROM mediciones WHERE paciente_id = %s ORDER BY fecha DESC
-    """, (int(pac["id"]),))
-    if hist_ro.empty:
-        st.info("Aún no hay mediciones registradas.")
-    else:
-        st.dataframe(hist_ro, use_container_width=True, hide_index=True)
-
-    st.markdown("### 🖼️ Tus fotos")
-    gal = df_sql("SELECT fecha, drive_file_id, filename FROM fotos WHERE paciente_id=%s ORDER BY fecha DESC", (int(pac["id"]),))
-    if gal.empty:
-        st.info("Sin fotos aún.")
-    else:
-        def _chunk(lst, n):
-            for i in range(0, len(lst), n): yield lst[i : i + n]
-        for fch in sorted(gal["fecha"].unique(), reverse=True):
-            st.markdown(f"### 🗓️ {fch}")
-            fila = gal[gal["fecha"] == fch].reset_index(drop=True).to_dict("records")
-            for fila4 in _chunk(fila, 4):
-                cols = st.columns(4, gap="medium")
-                for i, r in enumerate(fila4):
-                    with cols[i]:
-                        img_url = drive_image_view_url(r["drive_file_id"]) if r.get("drive_file_id") else ""
-                        dl_url = drive_image_download_url(r["drive_file_id"]) if r.get("drive_file_id") else None
-                        st.markdown(f'<div style="background:#111;border-radius:12px;overflow:hidden;display:flex;justify-content:center;"><img src="{img_url}" style="height:220px;object-fit:contain;"></div>', unsafe_allow_html=True)
-                        if dl_url: st.link_button("⬇️ Descargar", dl_url, key=f"ro_dl_{i}_{fch}")
 
 
 # =========================
