@@ -8,6 +8,8 @@ from modules.core import (
     get_drive, ensure_cita_folder, drive_image_view_url, drive_image_download_url,
     delete_foto, delete_medicion_dia
 )
+import pandas as pd
+
 
 st.set_page_config(page_title="Carmen — Pacientes", page_icon="🧾", layout="wide")
 
@@ -26,9 +28,15 @@ if ok:
     )
 
 lista = st.session_state.get("bus_pac_df")
-if not lista or lista.empty:
+
+# ✅ Evita evaluar un DataFrame como booleano
+if (
+    lista is None
+    or (isinstance(lista, pd.DataFrame) and lista.empty)
+):
     st.caption("Escribe y busca para ver resultados.")
     st.stop()
+
 
 pac_sel = st.selectbox("Selecciona paciente", lista["nombre"].tolist())
 pid = int(lista.loc[lista["nombre"] == pac_sel, "id"].iloc[0])
