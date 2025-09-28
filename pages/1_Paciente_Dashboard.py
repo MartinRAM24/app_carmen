@@ -19,6 +19,20 @@ pid = int(p["id"])
 st.title(f"👋 Hola, {p['nombre']}")
 st.caption("Elige qué quieres hacer")
 
+# =========================
+# 🗓️ Mi próxima cita (NUEVO)
+# =========================
+prox = df_sql(
+    """
+    SELECT fecha, hora, nota
+    FROM citas
+    WHERE paciente_id=%s AND fecha >= CURRENT_DATE
+    ORDER BY fecha, hora
+    LIMIT 1
+    """,
+    (pid,),
+)
+
 c1, c2 = st.columns(2)
 
 with c1:
