@@ -2,7 +2,11 @@
 import streamlit as st
 from modules.core import is_admin_ok, login_paciente, registrar_paciente, normalize_tel
 
-st.set_page_config(page_title="Carmen Coach", page_icon="🩺", layout="wide")
+st.set_page_config(
+    page_title="Carmen Coach",
+    page_icon="assets/logo.png",  # usa tu logo como icono
+    layout="wide"
+)
 
 # Estado base
 st.session_state.setdefault("role", None)
