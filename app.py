@@ -486,6 +486,18 @@ with st.sidebar:
                 user = login_paciente(p_tel, p_pw)
                 if user:
                     st.session_state.role = "paciente"
+                    # Auto-provisiona carpeta si falta (casos registrados antes del parche)
+                    try:
+                        row = df_sql("SELECT nombre, drive_folder_id FROM pacientes WHERE id=%s",
+                                     (st.session_state.paciente["id"],))
+                        if not row.empty and not (row.loc[0, "drive_folder_id"] or "").strip():
+                            folder_id = ensure_patient_folder(row.loc[0, "nombre"].strip(),
+                                                              int(st.session_state.paciente["id"]))
+                            exec_sql("UPDATE pacientes SET drive_folder_id=%s WHERE id=%s",
+                                     (folder_id, int(st.session_state.paciente["id"])))
+                    except Exception as e:
+                        st.info(f"[Drive] No se pudo provisionar carpeta en login: {e}")
+
                     st.session_state.paciente = user  # dict con id, nombre, telefono
                     st.success(f"Bienvenid@, {user['nombre']} ✅")
                     st.rerun()
