@@ -21,12 +21,14 @@ main.block-container {
 
 /* Tarjetas internas (expanders, tabs, forms) */
 section[data-testid="stSidebarNav"] { background: transparent; }
+/* Expanders más oscuros */
 div[data-testid="stExpander"] > details {
-  background: #f0f0f0;  /* gris claro */
+  background: #2C2C2C;   /* gris oscuro */
   border-radius: 12px;
-  border: 1px solid #d6d6d6;
-  color: #111 !important; /* asegura que el texto sea oscuro y legible */
+  border: 1px solid #444444;  /* borde gris */
+  color: #FFFFFF;             /* texto en blanco */
 }
+
 
 /* Inputs */
 .stTextInput > div > div > input,
