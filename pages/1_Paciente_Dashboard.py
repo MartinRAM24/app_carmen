@@ -124,7 +124,7 @@ else:
     st.dataframe(meds, use_container_width=True, hide_index=True)
 
 st.divider()
-if st.button("Cerrar sesión"):
+if st.button("🚪 Cerrar sesión"):
     st.session_state.role = None
     st.session_state.paciente = None
-    st.switch_page("app.py")
+    st.rerun()
