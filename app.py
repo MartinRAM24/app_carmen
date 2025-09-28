@@ -641,17 +641,319 @@ def view_admin():
                     except Exception as e:
                         st.error(f"No se pudo eliminar: {e}")
 
-    # -------------------------
-    # Gestión completa (pega aquí tus tabs de la app de gestión)
-    # -------------------------
+    # =========================
+    # Gestión de Pacientes (Perfil, Mediciones, PDFs, Fotos)
+    # =========================
     st.divider()
-    st.subheader("📚 Gestión de Pacientes (Perfil, Mediciones, PDFs, Fotos)")
+    st.subheader("📚 Gestión de Pacientes")
 
-    # === Crear / Buscar / Seleccionar paciente ===
-    # Reutiliza exactamente tus bloques: "Nuevo paciente", "Buscar paciente",
-    # y los tabs: Perfil, Mediciones, PDFs, Fotos.
-    # Puedes copiar/pegar desde tu app de gestión dentro de esta función,
-    # adaptando `pid` según el paciente seleccionado.
+    # --- Crear paciente (rápido) ---
+    if st.button("➕ Nuevo paciente", key="admin_new_patient_btn"):
+        @st.dialog("➕ Nuevo paciente")
+        def _nuevo_paciente_dialog():
+            with st.form("form_nuevo_paciente", clear_on_submit=True):
+                nombre = st.text_input("Nombre completo *", key="newpac_nombre")
+                fnac = st.text_input("Fecha de nacimiento (YYYY-MM-DD)", key="newpac_fnac")
+                tel = st.text_input("Teléfono", key="newpac_tel")
+                correo = st.text_input("Correo", key="newpac_correo")
+                notas = st.text_area("Notas", key="newpac_notas")
+                enviar = st.form_submit_button("Guardar")
+            if enviar:
+                if not nombre.strip():
+                    st.error("El nombre es obligatorio.");
+                    return
+                # crea fila
+                with conn().cursor() as cur:
+                    cur.execute("""
+                                INSERT INTO pacientes (nombre, fecha_nac, telefono, correo, notas)
+                                VALUES (%s, %s, %s, %s, %s) RETURNING id
+                                """, (nombre.strip(), fnac.strip() or None, tel.strip() or None, correo.strip() or None,
+                                      notas.strip() or None))
+                    pid_new = int(cur.fetchone()[0])
+                # carpeta en Drive (opcional)
+                try:
+                    folder_id = ensure_patient_folder(nombre.strip(), pid_new)
+                    exec_sql("UPDATE pacientes SET drive_folder_id=%s WHERE id=%s", (folder_id, pid_new))
+                except Exception as e:
+                    st.info(f"[Drive] No se pudo crear carpeta: {e}")
+                st.success("Paciente creado ✅");
+                st.rerun()
+
+        _nuevo_paciente_dialog()
+
+    # --- Buscar paciente ---
+    with st.form("form_buscar_paciente"):
+        filtro = st.text_input("Buscar paciente", placeholder="Ej. Ana, Juan…", key="adm_search_txt")
+        do_search = st.form_submit_button("Buscar")
+    if do_search:
+        st.session_state["adm_busqueda_df"] = df_sql(
+            "SELECT id, nombre FROM pacientes WHERE nombre ILIKE %s ORDER BY nombre",
+            (f"%{filtro.strip()}%",) if filtro.strip() else ("%", "")
+        )
+
+    buscados = st.session_state.get("adm_busqueda_df", pd.DataFrame(columns=["id", "nombre"]))
+    if buscados.empty:
+        st.caption("Escribe arriba y pulsa **Buscar** para ver resultados.")
+        return
+
+    st.markdown("#### Resultados")
+    pac_sel = st.selectbox("Paciente", buscados["nombre"].tolist(), key="adm_pac_sel")
+    pid = int(buscados.loc[buscados["nombre"] == pac_sel, "id"].iloc[0])
+
+    # Token rápido
+    col_tok1, col_tok2 = st.columns([1, 1])
+    with col_tok1:
+        if st.button("📋 Generar/mostrar token", key="adm_show_token_btn"):
+            tok = get_or_create_token(pid)
+            st.code(tok or "—", language="")
+            st.caption("Este token da acceso de solo lectura al paciente.")
+    with col_tok2:
+        if st.button("🗑️ Eliminar paciente", key="adm_delete_patient_btn"):
+            st.session_state["_del_pid"] = pid
+            st.session_state["_del_name"] = pac_sel
+    if st.session_state.get("_del_pid") is not None:
+        @st.dialog("Confirmar eliminación")
+        def _confirm_del_patient():
+            st.warning(f"Se eliminará **{st.session_state['_del_name']}** y todos sus datos.")
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("❌ Cancelar", key="adm_cancel_del"):
+                    st.session_state.pop("_del_pid", None);
+                    st.session_state.pop("_del_name", None)
+            with c2:
+                if st.button("✅ Sí, eliminar", key="adm_ok_del"):
+                    exec_sql("DELETE FROM fotos WHERE paciente_id=%s", (pid,))
+                    exec_sql("DELETE FROM mediciones WHERE paciente_id=%s", (pid,))
+                    exec_sql("DELETE FROM pacientes WHERE id=%s", (pid,))
+                    st.session_state.pop("_del_pid", None);
+                    st.session_state.pop("_del_name", None)
+                    st.success("Paciente eliminado ✅");
+                    st.rerun()
+
+        _confirm_del_patient()
+
+    # --- Tabs de gestión ---
+    tab_info, tab_medidas, tab_pdfs, tab_fotos = st.tabs(["🧾 Perfil", "📏 Mediciones", "📂 PDFs", "🖼️ Fotos"])
+
+    # ===== PERFIL =====
+    with tab_info:
+        datos = df_sql("SELECT * FROM pacientes WHERE id=%s", (pid,))
+        if datos.empty:
+            st.info("Paciente no encontrado.")
+        else:
+            row = datos.iloc[0]
+            with st.form("form_edit_paciente"):
+                nombre = st.text_input("Nombre", row["nombre"] or "", key=f"edit_nombre_{pid}")
+                fnac = st.text_input("Fecha de nacimiento (YYYY-MM-DD)", row["fecha_nac"] or "", key=f"edit_fnac_{pid}")
+                tel = st.text_input("Teléfono", row["telefono"] or "", key=f"edit_tel_{pid}")
+                mail = st.text_input("Correo", row["correo"] or "", key=f"edit_mail_{pid}")
+                notas = st.text_area("Notas", row["notas"] or "", key=f"edit_notas_{pid}")
+                guardar = st.form_submit_button("Guardar cambios")
+            if guardar:
+                exec_sql("""
+                         UPDATE pacientes
+                         SET nombre=%s,
+                             fecha_nac=%s,
+                             telefono=%s,
+                             correo=%s,
+                             notas=%s
+                         WHERE id = %s
+                         """, (nombre.strip(), fnac.strip() or None, tel.strip() or None, mail.strip() or None,
+                               notas.strip() or None, pid))
+                st.success("Perfil actualizado ✅");
+                st.rerun()
+
+    # ===== MEDICIONES =====
+    with tab_medidas:
+        with st.expander("➕ Nueva medición / Guardar por fecha", expanded=True):
+            with st.form(f"form_medicion_{pid}"):
+                f = st.text_input("Fecha (YYYY-MM-DD)", value=str(date.today()), key=f"med_fecha_{pid}")
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    peso_kg = st.number_input("Peso (kg)", min_value=0.0, step=0.1, value=0.0, key=f"med_peso_{pid}")
+                    grasa = st.number_input("% Grasa", min_value=0.0, step=0.1, value=0.0, key=f"med_grasa_{pid}")
+                    musc = st.number_input("% Músculo", min_value=0.0, step=0.1, value=0.0, key=f"med_musc_{pid}")
+                with c2:
+                    brazo_r = st.number_input("Brazo (reposo)", min_value=0.0, step=0.1, value=0.0,
+                                              key=f"med_brazo_r_{pid}")
+                    brazo_f = st.number_input("Brazo (flex)", min_value=0.0, step=0.1, value=0.0,
+                                              key=f"med_brazo_f_{pid}")
+                    pecho_r = st.number_input("Pecho (reposo)", min_value=0.0, step=0.1, value=0.0,
+                                              key=f"med_pecho_r_{pid}")
+                with c3:
+                    pecho_f = st.number_input("Pecho (flex)", min_value=0.0, step=0.1, value=0.0,
+                                              key=f"med_pecho_f_{pid}")
+                    cintura = st.number_input("Cintura (cm)", min_value=0.0, step=0.1, value=0.0,
+                                              key=f"med_cintura_{pid}")
+                    cadera = st.number_input("Cadera (cm)", min_value=0.0, step=0.1, value=0.0, key=f"med_cadera_{pid}")
+                pierna = st.number_input("Pierna (cm)", min_value=0.0, step=0.1, value=0.0, key=f"med_pierna_{pid}")
+                pantorrilla = st.number_input("Pantorrilla (cm)", min_value=0.0, step=0.1, value=0.0,
+                                              key=f"med_pantorrilla_{pid}")
+                notas_med = st.text_area("Notas", "", key=f"med_notas_{pid}")
+                guardar_med = st.form_submit_button("Guardar/Actualizar medición")
+            if guardar_med:
+                def nz(x):
+                    return None if x in (0, 0.0) else x
+
+                # Asegura fila y actualiza
+                exec_sql(
+                    "INSERT INTO mediciones (paciente_id, fecha) VALUES (%s,%s) ON CONFLICT (paciente_id, fecha) DO NOTHING",
+                    (pid, f.strip()))
+                exec_sql("""
+                         UPDATE mediciones
+                         SET peso_kg=%s,
+                             grasa_pct=%s,
+                             musculo_pct=%s,
+                             brazo_rest=%s,
+                             brazo_flex=%s,
+                             pecho_rest=%s,
+                             pecho_flex=%s,
+                             cintura_cm=%s,
+                             cadera_cm=%s,
+                             pierna_cm=%s,
+                             pantorrilla_cm=%s,
+                             notas=%s
+                         WHERE paciente_id = %s
+                           AND fecha = %s
+                         """, (nz(peso_kg), nz(grasa), nz(musc), nz(brazo_r), nz(brazo_f), nz(pecho_r), nz(pecho_f),
+                               nz(cintura), nz(cadera), nz(pierna), nz(pantorrilla), (notas_med.strip() or None), pid,
+                               f.strip()))
+                # Vincular a cita si existe
+                try:
+                    asociar_medicion_a_cita(pid, f.strip())
+                except Exception:
+                    pass
+                st.success("Medición guardada ✅");
+                st.rerun()
+
+        # Historial
+        hist = df_sql("""
+                      SELECT fecha,
+                             peso_kg        AS peso_KG,
+                             grasa_pct      AS grasa,
+                             musculo_pct    AS musculo,
+                             brazo_rest     AS brazo_rest_CM,
+                             brazo_flex     AS brazo_flex_CM,
+                             pecho_rest     AS pecho_rest_CM,
+                             pecho_flex     AS pecho_flex_CM,
+                             cintura_cm     AS cintura_CM,
+                             cadera_cm      AS cadera_CM,
+                             pierna_cm      AS pierna_CM,
+                             pantorrilla_cm AS pantorrilla_CM,
+                             notas
+                      FROM mediciones
+                      WHERE paciente_id = %s
+                      ORDER BY fecha DESC
+                      """, (pid,))
+        if hist.empty:
+            st.info("Sin mediciones aún.")
+        else:
+            st.dataframe(hist, use_container_width=True, hide_index=True)
+
+    # ===== PDFs =====
+    with tab_pdfs:
+        st.caption("Sube y consulta los PDFs de cada cita/fecha (YYYY-MM-DD).")
+        fecha_pdf = st.text_input("Fecha de la cita", value=str(date.today()), key=f"pdf_fecha_{pid}")
+        c1, c2 = st.columns(2)
+        with c1:
+            up_rutina = st.file_uploader("Rutina (PDF)", type=["pdf"], key=f"up_rutina_{pid}")
+            if up_rutina and st.button("⬆️ Subir Rutina", key=f"btn_rutina_{pid}"):
+                try:
+                    cita_folder = ensure_cita_folder(pid, fecha_pdf.strip())
+                    drive = get_drive()
+                    ext = Path(up_rutina.name).suffix or ".pdf"
+                    target_name = _ensure_unique_name(drive, cita_folder, _slugify(f"{fecha_pdf.strip()}_rutina{ext}"))
+                    pdf = upload_pdf_to_folder(up_rutina.read(), target_name, cita_folder)
+                    upsert_medicion(pid, fecha_pdf.strip(), rutina_pdf=pdf["webViewLink"], plan_pdf=None)
+                    asociar_medicion_a_cita(pid, fecha_pdf.strip())
+                    st.success("Rutina subida y enlazada ✅");
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"No se pudo subir: {e}")
+        with c2:
+            up_plan = st.file_uploader("Plan (PDF)", type=["pdf"], key=f"up_plan_{pid}")
+            if up_plan and st.button("⬆️ Subir Plan", key=f"btn_plan_{pid}"):
+                try:
+                    cita_folder = ensure_cita_folder(pid, fecha_pdf.strip())
+                    drive = get_drive()
+                    ext = Path(up_plan.name).suffix or ".pdf"
+                    target_name = _ensure_unique_name(drive, cita_folder, _slugify(f"{fecha_pdf.strip()}_plan{ext}"))
+                    pdf = upload_pdf_to_folder(up_plan.read(), target_name, cita_folder)
+                    upsert_medicion(pid, fecha_pdf.strip(), rutina_pdf=None, plan_pdf=pdf["webViewLink"])
+                    asociar_medicion_a_cita(pid, fecha_pdf.strip())
+                    st.success("Plan subido y enlazado ✅");
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"No se pudo subir: {e}")
+
+        st.divider()
+        citas = df_sql("SELECT fecha, rutina_pdf, plan_pdf FROM mediciones WHERE paciente_id=%s ORDER BY fecha DESC",
+                       (pid,))
+        if citas.empty:
+            st.info("Este paciente aún no tiene PDFs.")
+        else:
+            fecha_sel = st.selectbox("Ver PDFs de la cita", citas["fecha"].tolist(), key=f"pdfs_ver_{pid}")
+            actual = citas.loc[citas["fecha"] == fecha_sel].iloc[0]
+            r, p = (actual["rutina_pdf"] or "").strip(), (actual["plan_pdf"] or "").strip()
+            cl, cr = st.columns(2)
+            with cl:
+                st.link_button("🔗 Abrir Rutina (PDF)", r, disabled=(not bool(r)))
+            with cr:
+                st.link_button("🔗 Abrir Plan (PDF)", p, disabled=(not bool(p)))
+            with st.expander("👁️ Vista previa (Drive)"):
+                if r: st.components.v1.iframe(to_drive_preview(r), height=360)
+                if p: st.components.v1.iframe(to_drive_preview(p), height=360)
+
+    # ===== FOTOS =====
+    with tab_fotos:
+        st.caption("Sube fotos asociadas a una **fecha** (YYYY-MM-DD).")
+        colA, colB = st.columns([2, 1])
+        with colA:
+            fecha_f = st.text_input("Fecha", value=str(date.today()), key=f"fotos_fecha_{pid}")
+            up_imgs = st.file_uploader("Agregar fotos", accept_multiple_files=True, type=["jpg", "jpeg", "png", "webp"],
+                                       key=f"fotos_uploader_{pid}")
+        with colB:
+            if st.button("⬆️ Subir fotos", key=f"fotos_subir_{pid}"):
+                if not up_imgs:
+                    st.warning("Selecciona al menos una imagen.")
+                else:
+                    folder_id = ensure_cita_folder(pid, fecha_f.strip())
+                    drive = get_drive()
+                    for fimg in up_imgs:
+                        ext = Path(fimg.name).suffix or ".jpg"
+                        mime = fimg.type or "image/jpeg"
+                        target_name = _ensure_unique_name(drive, folder_id,
+                                                          _slugify(f"{fecha_f.strip()}_{Path(fimg.name).stem}{ext}"))
+                        f = upload_image_to_folder(fimg.read(), target_name, folder_id, mime)
+                        exec_sql("""
+                                 INSERT INTO fotos (paciente_id, fecha, drive_file_id, web_view_link, filename)
+                                 VALUES (%s, %s, %s, %s, %s)
+                                 """, (pid, fecha_f.strip(), f["id"], f.get("webViewLink", ""), target_name))
+                    asociar_medicion_a_cita(pid, fecha_f.strip())
+                    st.success("Fotos subidas ✅");
+                    st.rerun()
+
+        gal = df_sql("SELECT id, fecha, drive_file_id FROM fotos WHERE paciente_id=%s ORDER BY fecha DESC", (pid,))
+        if gal.empty:
+            st.info("Sin fotos aún.")
+        else:
+            def _chunk(lst, n):
+                for i in range(0, len(lst), n): yield lst[i:i + n]
+
+            for fch in sorted(gal["fecha"].unique(), reverse=True):
+                st.markdown(f"### 🗓️ {fch}")
+                fila = gal[gal["fecha"] == fch].reset_index(drop=True).to_dict("records")
+                for fila4 in _chunk(fila, 4):
+                    cols = st.columns(4, gap="medium")
+                    for i, r in enumerate(fila4):
+                        with cols[i]:
+                            img_url = drive_image_view_url(r["drive_file_id"]) if r.get("drive_file_id") else ""
+                            dl_url = drive_image_download_url(r["drive_file_id"]) if r.get("drive_file_id") else None
+                            st.markdown(
+                                f'<div style="background:#111;border-radius:12px;overflow:hidden;display:flex;justify-content:center;"><img src="{img_url}" style="height:220px;object-fit:contain;"></div>',
+                                unsafe_allow_html=True)
+                            if dl_url: st.link_button("⬇️ Descargar", dl_url, key=f"dl_{pid}_{r['id']}")
+
 
 # =========================
 # Vista: 🧑 Paciente (RO)
