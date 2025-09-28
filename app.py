@@ -1052,12 +1052,21 @@ def view_admin():
                     st.success("Fotos subidas ✅");
                     st.rerun()
 
-        gal = df_sql("SELECT id, fecha, drive_file_id FROM fotos WHERE paciente_id=%s ORDER BY fecha DESC", (pid,))
+        gal = df_sql(
+            """
+            SELECT id, fecha, drive_file_id
+            FROM fotos
+            WHERE paciente_id = %s
+            ORDER BY fecha DESC
+            """,
+            (pid,),
+        )
         if gal.empty:
             st.info("Sin fotos aún.")
         else:
             def _chunk(lst, n):
-                for i in range(0, len(lst), n): yield lst[i:i + n]
+                for i in range(0, len(lst), n):
+                    yield lst[i: i + n]
 
             for fch in sorted(gal["fecha"].unique(), reverse=True):
                 st.markdown(f"### 🗓️ {fch}")
@@ -1069,10 +1078,41 @@ def view_admin():
                             img_url = drive_image_view_url(r["drive_file_id"]) if r.get("drive_file_id") else ""
                             dl_url = drive_image_download_url(r["drive_file_id"]) if r.get("drive_file_id") else None
                             st.markdown(
-                                f'<div style="background:#111;border-radius:12px;overflow:hidden;display:flex;justify-content:center;"><img src="{img_url}" style="height:220px;object-fit:contain;"></div>',
-                                unsafe_allow_html=True)
-                            if dl_url: st.link_button("⬇️ Descargar", dl_url)
+                                f"""
+                                <div class="photo-card">
+                                  <img src="{img_url}" alt="foto">
+                                </div>
+                                """,
+                                unsafe_allow_html=True,
+                            )
 
+                            # 👇 Botón descargar (sin key)
+                            if dl_url:
+                                st.link_button("⬇️ Descargar", dl_url)
+
+                            # 👇 Botón eliminar (con key único)
+                            if st.button("🗑️ Eliminar", key=f"del_foto_{pid}_{r['id']}"):
+                                st.session_state["_delete_photo_id"] = int(r["id"])
+
+                # 👇 Confirmación modal
+                if "_delete_photo_id" in st.session_state:
+                    @st.dialog("Confirmar eliminación")
+                    def _confirm_delete_dialog():
+                        st.warning("Esta acción eliminará la foto de Drive y de la base de datos.")
+                        c1, c2 = st.columns(2)
+                        with c1:
+                            if st.button("✅ Sí, borrar", key="dlg_del_ok"):
+                                delete_foto(st.session_state["_delete_photo_id"])
+                                st.session_state.pop("_delete_photo_id", None)
+                                st.success("Foto eliminada ✅")
+                                st.rerun()
+                        with c2:
+                            if st.button("❌ Cancelar", key="dlg_del_cancel"):
+                                st.session_state.pop("_delete_photo_id", None)
+                                st.info("Operación cancelada")
+
+                    _confirm_delete_dialog()
+                    break  # para que no muestre varios diálogos a la vez
 
 # =========================
 # Router principal
