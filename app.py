@@ -429,17 +429,17 @@ with st.sidebar:
     st.markdown("## Acceso")
     tabs = st.tabs(["👩‍⚕️ Admin", "🧑 Paciente (Agenda)", "🧑 Paciente (Portal RO)"])
     with tabs[0]:
-        a_user = st.text_input("Usuario", value=ADMIN_USER, disabled=True)
-        a_pass = st.text_input("Contraseña", type="password")
-        admin_login = st.button("Entrar como Admin", use_container_width=True)
+        a_user = st.text_input("Usuario", value=ADMIN_USER, disabled=True, key="admin_user_input")
+        a_pass = st.text_input("Contraseña", type="password", key="admin_pass_input")
+        admin_login = st.button("Entrar como Admin", use_container_width=True, key="admin_login_btn")
     with tabs[1]:
-        p_tel = st.text_input("Teléfono (agenda)")
-        p_pw  = st.text_input("Contraseña", type="password")
-        pat_login = st.button("Entrar (Agenda)", use_container_width=True)
+        p_tel = st.text_input("Teléfono (agenda)", key="agenda_tel_input")
+        p_pw  = st.text_input("Contraseña", type="password", key="agenda_pass_input")
+        pat_login = st.button("Entrar (Agenda)", use_container_width=True, key="agenda_login_btn")
     with tabs[2]:
         token_from_url = st.query_params.get("token", [None])[0] if hasattr(st, "query_params") else None
-        p_token = st.text_input("Token (o ?token=...)", value=token_from_url or "")
-        pat_ro_login = st.button("Entrar (Solo lectura)", use_container_width=True)
+        p_token = st.text_input("Token (o ?token=...)", value=token_from_url or "", key="portal_token_input")
+        pat_ro_login = st.button("Entrar (Solo lectura)", use_container_width=True, key="portal_login_btn")
 
 if "role" not in st.session_state: st.session_state.role = None
 if "paciente" not in st.session_state: st.session_state.paciente = None
