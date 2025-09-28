@@ -95,7 +95,6 @@ with c2:
                             f'<div style="background:#111;border-radius:12px;overflow:hidden;display:flex;justify-content:center;"><img src="{img_url}" style="height:220px;object-fit:contain;"></div>',
                             unsafe_allow_html=True,
                         )
-                        st.caption(r.get("filename") or "")
                         st.link_button("⬇️ Descargar", dl_url)
 
 
