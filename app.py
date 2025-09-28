@@ -955,18 +955,20 @@ def view_admin():
                             if dl_url: st.link_button("⬇️ Descargar", dl_url, key=f"dl_{pid}_{r['id']}")
 
 
-# =========================
-# Vista: 🧑 Paciente (RO)
-# =========================
 def view_paciente_ro():
     pac = st.session_state.paciente
     st.subheader(f"🧑 Portal del paciente — {pac['nombre']}")
-    st.caption("Vista de solo lectura.")
+    st.caption("Vista de solo lectura. Si necesitas cambios, contacta a tu coach.")
+
+    if st.button("Cerrar sesión (Portal)", key="portal_logout_btn"):
+        st.session_state.role = None
+        st.session_state.paciente = None
+        st.success("Sesión cerrada."); st.rerun()
 
     with st.expander("🧾 Datos del perfil"):
         c1, c2 = st.columns(2)
         with c1:
-            st.write("**Nombre:**", pac["nombre"])
+            st.write("**Nombre:**", pac.get("nombre","—"))
             st.write("**Fecha de nacimiento:**", pac.get("fecha_nac") or "—")
             st.write("**Teléfono:**", pac.get("telefono") or "—")
         with c2:
@@ -978,46 +980,38 @@ def view_paciente_ro():
     if citas.empty:
         st.info("Aún no tienes PDFs registrados.")
     else:
-        fecha_sel = st.selectbox("Fecha de la cita", citas["fecha"].tolist())
+        fecha_sel = st.selectbox("Fecha de la cita", citas["fecha"].tolist(), key=f"ro_pdf_fecha_{pac['id']}")
         actual = citas.loc[citas["fecha"] == fecha_sel].iloc[0]
         r, p = (actual["rutina_pdf"] or "").strip(), (actual["plan_pdf"] or "").strip()
         c1, c2 = st.columns(2)
-        with c1: st.link_button("🔗 Abrir Rutina (PDF)", r, disabled=(not bool(r)))
-        with c2: st.link_button("🔗 Abrir Plan (PDF)", p, disabled=(not bool(p)))
+        with c1: st.link_button("🔗 Abrir Rutina (PDF)", r, disabled=(not bool(r)), key=f"ro_open_rut_{pac['id']}")
+        with c2: st.link_button("🔗 Abrir Plan (PDF)", p, disabled=(not bool(p)), key=f"ro_open_plan_{pac['id']}")
         with st.expander("👁️ Vista previa (Drive)"):
             if r: st.components.v1.iframe(to_drive_preview(r), height=360)
             if p: st.components.v1.iframe(to_drive_preview(p), height=360)
 
     st.markdown("### 📏 Tus mediciones")
-    hist = df_sql("""
+    hist_ro = df_sql("""
         SELECT fecha,
                peso_kg AS peso_KG, grasa_pct AS grasa, musculo_pct AS musculo,
                brazo_rest AS brazo_rest_CM, brazo_flex AS brazo_flex_CM,
                pecho_rest AS pecho_rest_CM, pecho_flex AS pecho_flex_CM,
                cintura_cm AS cintura_CM, cadera_cm AS cadera_CM,
                pierna_cm AS pierna_CM, pantorrilla_cm AS pantorrilla_CM, notas
-        FROM mediciones WHERE paciente_id=%s ORDER BY fecha DESC
+        FROM mediciones WHERE paciente_id = %s ORDER BY fecha DESC
     """, (int(pac["id"]),))
-    if hist.empty: st.info("Aún no hay mediciones registradas.")
-    else: st.dataframe(hist, use_container_width=True, hide_index=True)
+    if hist_ro.empty:
+        st.info("Aún no hay mediciones registradas.")
+    else:
+        st.dataframe(hist_ro, use_container_width=True, hide_index=True)
 
     st.markdown("### 🖼️ Tus fotos")
     gal = df_sql("SELECT fecha, drive_file_id, filename FROM fotos WHERE paciente_id=%s ORDER BY fecha DESC", (int(pac["id"]),))
     if gal.empty:
         st.info("Sin fotos aún.")
     else:
-        if "_photos_css_loaded_patient" not in st.session_state:
-            st.markdown("""
-                <style>
-                  .photo-card { background:#111;border-radius:12px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,.2);display:flex;flex-direction:column;align-items:center;margin-bottom:6px; }
-                  .photo-card img { height:220px;width:auto;object-fit:contain;display:block;margin:auto; }
-                </style>
-            """, unsafe_allow_html=True)
-            st.session_state._photos_css_loaded_patient = True
-
         def _chunk(lst, n):
             for i in range(0, len(lst), n): yield lst[i : i + n]
-
         for fch in sorted(gal["fecha"].unique(), reverse=True):
             st.markdown(f"### 🗓️ {fch}")
             fila = gal[gal["fecha"] == fch].reset_index(drop=True).to_dict("records")
@@ -1027,10 +1021,9 @@ def view_paciente_ro():
                     with cols[i]:
                         img_url = drive_image_view_url(r["drive_file_id"]) if r.get("drive_file_id") else ""
                         dl_url = drive_image_download_url(r["drive_file_id"]) if r.get("drive_file_id") else None
-                        st.markdown(f"""<div class="photo-card"><img src="{img_url}" alt="foto"></div>""",
-                                    unsafe_allow_html=True)
-                        if dl_url: st.link_button("⬇️ Descargar", dl_url)
-                        else: st.caption("—")
+                        st.markdown(f'<div style="background:#111;border-radius:12px;overflow:hidden;display:flex;justify-content:center;"><img src="{img_url}" style="height:220px;object-fit:contain;"></div>', unsafe_allow_html=True)
+                        if dl_url: st.link_button("⬇️ Descargar", dl_url, key=f"ro_dl_{i}_{fch}")
+
 
 # =========================
 # Router principal
