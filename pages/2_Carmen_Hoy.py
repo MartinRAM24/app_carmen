@@ -23,54 +23,54 @@ main.block-container {
 
 /* Tarjetas internas (expanders, tabs, forms) */
 section[data-testid="stSidebarNav"] { background: transparent; }
-/* Expanders más oscuros */
+
+/* ===== Expanders: gris medio agradable ===== */
 div[data-testid="stExpander"] > details {
-  background: #2C2C2C;   /* gris oscuro */
-  border-radius: 12px;
-  border: 1px solid #444444;  /* borde gris */
-  color: #FFFFFF;             /* texto en blanco */
+  background: #2B2F36 !important;       /* panel cerrado */
+  border: 1px solid #3A3F47 !important;
+  border-radius: 12px !important;
+}
+div[data-testid="stExpander"] > details[open] {
+  background: #2F343C !important;       /* panel abierto */
+}
+div[data-testid="stExpander"] summary {
+  background: #2B2F36 !important;       /* tira del header */
+  color: #EAECEF !important;
+  border-radius: 12px !important;
 }
 
-
-/* ===== Inputs (cubre text/number/password/date/time/select/textarea) ===== */
-.stTextInput input,
-.stNumberInput input,
-.stDateInput input,
-.stTimeInput input,
-.stTextArea textarea,
-.stSelectbox [data-baseweb="select"] > div,
-.stMultiSelect [data-baseweb="select"] > div,
-[data-baseweb="input"] input,
-textarea,
-input[type="text"],
-input[type="password"],
-input[type="email"],
-input[type="tel"],
-input[type="number"] {
-  background: #F2F2F2 !important;    /* gris claro y descansado */
-  color: #111827 !important;          /* texto oscuro */
-  border: 1px solid #D1D5DB !important; /* gris medio */
+/* ===== Inputs en gris (texto/number/textarea/select/date/time/multiselect) ===== */
+[data-testid="stTextInput"] input,
+[data-testid="stNumberInput"] input,
+[data-testid="stTextArea"] textarea,
+[data-testid="stDateInput"] input,
+[data-testid="stTimeInput"] input,
+[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+[data-testid="stMultiSelect"] div[role="combobox"],
+/* file uploader caja */
+[data-testid="stFileUploader"] section[data-testid="stFileDropzone"] {
+  background: #2F3136 !important;
+  color: #F5F6F7 !important;
+  border: 1px solid #4A4D55 !important;
   border-radius: 10px !important;
-  box-shadow: none !important;
 }
 
-/* Placeholders más suaves */
-::placeholder { color: #6B7280 !important; }
-
-/* Al enfocar: borde guinda sutil + halo tenue */
-.stTextInput input:focus,
-.stNumberInput input:focus,
-.stDateInput input:focus,
-.stTimeInput input:focus,
-.stTextArea textarea:focus,
-.stSelectbox [data-baseweb="select"] > div:focus-within,
-.stMultiSelect [data-baseweb="select"] > div:focus-within,
-[data-baseweb="input"] input:focus,
-textarea:focus {
-  border-color: #A02C4A !important;           /* guinda */
-  box-shadow: 0 0 0 3px rgba(160,44,74,0.15) !important;
-  outline: none !important;
+/* Placeholders más claros */
+[data-testid="stTextInput"] input::placeholder,
+[data-testid="stNumberInput"] input::placeholder,
+[data-testid="stTextArea"] textarea::placeholder,
+[data-testid="stDateInput"] input::placeholder,
+[data-testid="stTimeInput"] input::placeholder {
+  color: #B8B9BE !important;
 }
+
+/* Desplegable del select */
+div[data-baseweb="popover"] div[role="listbox"] {
+  background: #2F3136 !important;
+  color: #F5F6F7 !important;
+  border: 1px solid #4A4D55 !important;
+}
+
 
 
 /* Botones primarios */
