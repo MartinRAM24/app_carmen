@@ -96,7 +96,7 @@ with c2:
                             unsafe_allow_html=True,
                         )
                         st.caption(r.get("filename") or "")
-                        st.link_button("⬇️ Descargar", dl_url, key=f"pac_foto_dl_{pid}_{fid}")
+                        st.link_button("⬇️ Descargar", dl_url)
 
 
 st.divider()
