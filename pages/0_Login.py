@@ -13,14 +13,12 @@ logo_base64 = get_base64_of_bin_file("assets/Logo.png")
 st.markdown(
     f"""
     <div style="text-align: center;">
-        <img src="data:image/png;base64,{logo_base64}" width="150">
+        <img src="data:image/png;base64,{logo_base64}" width="300">
         <p>Bienvenida/o. Elige cómo quieres entrar.</p>
     </div>
     """,
     unsafe_allow_html=True
 )
-
-st.caption("Bienvenida/o. Elige cómo quieres entrar.")
 
 # Estado base
 st.session_state.setdefault("role", None)
