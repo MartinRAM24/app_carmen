@@ -11,13 +11,13 @@ st.caption("Bienvenida/o. Elige cómo quieres entrar.")
 st.session_state.setdefault("role", None)
 st.session_state.setdefault("paciente", None)
 
-tab_admin, tab_pac = st.tabs(["👩‍⚕️ Admin", "🧑 Paciente"])
+tab_admin, tab_pac = st.tabs(["👩‍⚕️ Coach", "🧑 Paciente"])
 
 # =========================
 # TAB: ADMIN
 # =========================
 with tab_admin:
-    st.subheader("Carmen (Admin)")
+    st.subheader("Carmen (Coach)")
     with st.form("form_admin_login", clear_on_submit=False):
         a_user = st.text_input("Usuario", value="carmen", disabled=True, key="admin_user")
         a_pass = st.text_input("Contraseña", type="password", key="admin_pass")
