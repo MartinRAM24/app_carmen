@@ -1041,9 +1041,7 @@ role = st.session_state.role
 if role == "admin":
     view_admin()
 elif role == "paciente_agenda":
-    view_agenda_paciente()
-elif role == "paciente_ro":
-    view_paciente_ro()
+    view_paciente_dashboard()
 else:
     st.info("Elige un modo de acceso en la barra lateral (Admin / Paciente Agenda / Paciente RO).")
 
