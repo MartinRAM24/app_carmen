@@ -36,7 +36,16 @@ else:
     st.info("Sin citas en la semana.")
 
 st.divider()
-st.page_link("pages/3_Carmen_Pacientes.py", label="Ir a Gestión de Pacientes →")
-st.page_link("pages/4_Carmen_Citas.py", label="Ir a Gestión de Citas →")
-st.page_link("app.py", label="Cerrar sesión", icon="🚪")
+
+# Atajos opcionales a otras páginas (si quieres; o confía en el sidebar)
+if st.button("Ir a Gestión de Pacientes →"):
+     st.switch_page("pages/3_Carmen_Pacientes.py")
+if st.button("Ir a Gestión de Citas →"):
+     st.switch_page("pages/4_Carmen_Citas.py")
+
+# Cerrar sesión (sustituye al antiguo st.page_link)
+if st.button("🚪 Cerrar sesión"):
+    st.session_state.role = None
+    st.session_state.paciente = None
+    st.rerun()
 
