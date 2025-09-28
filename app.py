@@ -9,7 +9,7 @@ import streamlit as st
 CUSTOM_CSS = """
 /* Sidebar */
 [data-testid="stSidebar"] {
-  background: linear-gradient(180deg, #281E5D 0%, #3B2C85 100%);
+  background: linear-gradient(180deg, #7B1E3C 0%, #800020 100%);
   color: #FFFFFF;
 }
 [data-testid="stSidebar"] * { color: #FFFFFF !important; }
@@ -43,15 +43,15 @@ div[data-testid="stExpander"] > details {
 
 /* Botones primarios */
 button[kind="primary"] {
-  background: #6C63FF !important;
+  background: #800020 !important;
   color: #FFFFFF !important;
   border-radius: 10px !important;
   border: 0 !important;
 }
-button[kind="primary"]:hover { filter: brightness(0.95); }
+button[kind="primary"]:hover { filter: brightness(0.9); }
 
 /* Links */
-a, .stLinkButton button { color: #6C63FF !important; }
+a, .stLinkButton button { color: #7B1E3C !important; }
 
 /* DataFrames */
 .stDataFrame div[data-testid="stTable"] {
