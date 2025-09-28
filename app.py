@@ -670,12 +670,12 @@ def view_paciente_dashboard():
         if citas.empty:
             st.info("Aún no tienes PDFs registrados.")
         else:
-            fecha_sel = st.selectbox("Fecha de la cita", citas["fecha"].tolist(), key=f"pac_pdf_fecha_{pid}")
+            fecha_sel = st.selectbox("Fecha de la cita", citas["fecha"].tolist())
             actual = citas.loc[citas["fecha"] == fecha_sel].iloc[0]
             r, pl = (actual["rutina_pdf"] or "").strip(), (actual["plan_pdf"] or "").strip()
             c1, c2 = st.columns(2)
-            with c1: st.link_button("🔗 Abrir Rutina (PDF)", r, disabled=(not bool(r)), key=f"pac_open_rut_{pid}")
-            with c2: st.link_button("🔗 Abrir Plan (PDF)", pl, disabled=(not bool(pl)), key=f"pac_open_plan_{pid}")
+            with c1: st.link_button("🔗 Abrir Rutina (PDF)", r, disabled=(not bool(r)))
+            with c2: st.link_button("🔗 Abrir Plan (PDF)", pl, disabled=(not bool(pl)))
             with st.expander("👁️ Vista previa (Drive)"):
                 if r: st.components.v1.iframe(to_drive_preview(r), height=360)
                 if pl: st.components.v1.iframe(to_drive_preview(pl), height=360)
