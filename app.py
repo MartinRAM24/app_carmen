@@ -506,29 +506,6 @@ with st.sidebar:
 if "role" not in st.session_state: st.session_state.role = None
 if "paciente" not in st.session_state: st.session_state.paciente = None
 
-if admin_login:
-    if is_admin_ok(a_user, a_pass):
-        st.session_state.role = "admin"; st.session_state.paciente = None
-        st.success("Acceso admin concedido ✅"); st.rerun()
-    else:
-        st.error("Credenciales inválidas")
-
-if pat_login:
-    user = login_paciente(p_tel, p_pw)
-    if user:
-        st.session_state.role = "paciente_agenda"; st.session_state.paciente = user
-        st.success(f"Bienvenid@, {user['nombre']} ✅"); st.rerun()
-    else:
-        st.error("Teléfono o contraseña incorrectos.")
-
-if pat_ro_login:
-    d = df_sql("SELECT * FROM pacientes WHERE token=%s", (p_token.strip(),)) if p_token.strip() else pd.DataFrame()
-    if d.empty:
-        st.error("Token inválido o vacío")
-    else:
-        st.session_state.role = "paciente_ro"; st.session_state.paciente = dict(d.iloc[0])
-        st.success(f"Bienvenido, {d.iloc[0]['nombre']} ✅"); st.rerun()
-
 # =========================
 # Vista: 📅 Agenda (Paciente)
 # =========================
