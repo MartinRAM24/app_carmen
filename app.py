@@ -4,6 +4,67 @@ from modules.core import is_admin_ok, login_paciente, registrar_paciente, normal
 
 st.set_page_config(page_title="Carmen Coach", page_icon="🩺", layout="wide")
 
+import streamlit as st
+
+CUSTOM_CSS = """
+/* Sidebar */
+[data-testid="stSidebar"] {
+  background: linear-gradient(180deg, #281E5D 0%, #3B2C85 100%);
+  color: #FFFFFF;
+}
+[data-testid="stSidebar"] * { color: #FFFFFF !important; }
+
+/* Área principal en blanco */
+main.block-container {
+  background: #FFFFFF;
+  padding-top: 1.2rem;
+  padding-bottom: 3rem;
+  border-radius: 12px;
+}
+
+/* Tarjetas internas (expanders, tabs, forms) */
+section[data-testid="stSidebarNav"] { background: transparent; }
+div[data-testid="stExpander"] > details {
+  background: #FFFFFF;
+  border-radius: 12px;
+  border: 1px solid #E5E7EB;
+}
+
+/* Inputs */
+.stTextInput > div > div > input,
+.stNumberInput input,
+.stTextArea textarea,
+.stSelectbox > div > div {
+  background: #FFFFFF !important;
+  color: #111827 !important;
+  border: 1px solid #E5E7EB !important;
+  border-radius: 10px !important;
+}
+
+/* Botones primarios */
+button[kind="primary"] {
+  background: #6C63FF !important;
+  color: #FFFFFF !important;
+  border-radius: 10px !important;
+  border: 0 !important;
+}
+button[kind="primary"]:hover { filter: brightness(0.95); }
+
+/* Links */
+a, .stLinkButton button { color: #6C63FF !important; }
+
+/* DataFrames */
+.stDataFrame div[data-testid="stTable"] {
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+/* Encabezados */
+h1, h2, h3, h4 { color: #111827; }
+"""
+
+st.markdown(f"<style>{CUSTOM_CSS}</style>", unsafe_allow_html=True)
+
 # Estado base
 st.session_state.setdefault("role", None)
 st.session_state.setdefault("paciente", None)
