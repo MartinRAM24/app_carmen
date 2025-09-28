@@ -69,7 +69,7 @@ with tab_info:
 with tab_medidas:
     with st.expander("➕ Nueva medición / Guardar por fecha", expanded=True):
         with st.form(f"form_medicion_{pid}"):
-            f = st.text_input("Fecha (YYYY-MM-DD)", value=str(date.today()))
+            f = st.text_input("Fecha (YYYY-MM-DD)", value=str(date.today()), key=f"med_fecha_{pid}")
             c1, c2, c3 = st.columns(3)
             with c1:
                 peso_kg = st.number_input("Peso (kg)", min_value=0.0, step=0.1, value=0.0)
@@ -139,7 +139,7 @@ with tab_medidas:
 # ---- PDFs ----
 with tab_pdfs:
     st.caption("Sube y consulta los PDFs de cada fecha (YYYY-MM-DD).")
-    fecha_pdf = st.text_input("Fecha", value=str(date.today()))
+    fecha_pdf = st.text_input("Fecha", value=str(date.today()), key=f"pdf_fecha_{pid}")
     c1, c2 = st.columns(2)
     with c1:
         up_rutina = st.file_uploader("Rutina (PDF)", type=["pdf"])
@@ -200,7 +200,7 @@ with tab_fotos:
     st.caption("Sube fotos asociadas a una **fecha** (YYYY-MM-DD).")
     colA, colB = st.columns([2, 1])
     with colA:
-        fecha_f = st.text_input("Fecha", value=str(date.today()))
+        fecha_f = st.text_input("Fecha", value=str(date.today()), key=f"pdf_fecha_{pid}")
         up_imgs = st.file_uploader("Agregar fotos", accept_multiple_files=True, type=["jpg","jpeg","png","webp"])
     with colB:
         if st.button("⬆️ Subir fotos"):
