@@ -1009,4 +1009,3 @@ elif role == "paciente":
 else:
     st.info("Elige un modo de acceso en la barra lateral (Admin o Paciente).")
 
-
