@@ -33,6 +33,31 @@ prox = df_sql(
     (pid,),
 )
 
+st.subheader("🗓️ Mi próxima cita")
+if prox.empty:
+    st.info("Aún no tienes una próxima cita agendada.")
+else:
+    r = prox.iloc[0]
+    # fecha puede venir como str/obj; la normalizamos
+    f = pd.to_datetime(r["fecha"]).date()
+    # hora puede venir como datetime.time o str
+    h_raw = r["hora"]
+    h_txt = h_raw.strftime("%H:%M") if hasattr(h_raw, "strftime") else str(h_raw)[:5]
+    dias = (f - date.today()).days
+    txt_dias = "hoy" if dias == 0 else (f"en {dias} días" if dias > 0 else "pasada")
+
+    st.markdown(
+        f"""
+        **Fecha:** {f.strftime('%d/%m/%Y')}  
+        **Hora:** {h_txt}  
+        **Estado:** {txt_dias}  
+        """.strip()
+    )
+    if (r.get("nota") or "").strip():
+        st.caption(f"Nota: {r['nota']}")
+
+st.divider()
+
 c1, c2 = st.columns(2)
 
 with c1:
@@ -142,3 +167,4 @@ if st.button("🚪 Cerrar sesión"):
     st.session_state.role = None
     st.session_state.paciente = None
     st.rerun()
+
