@@ -14,7 +14,7 @@ st.session_state.setdefault("paciente", None)
 
 # ======== Define páginas ========
 # Puedes apuntar a tus scripts existentes en /pages
-home      = st.Page("pages/0_Login.py",               title="Inicio",            page_icon="assets/logo.png")
+home      = st.Page("pages/0_Login.py",               title="Inicio",            icon="🩺")
 pac_dash  = st.Page("pages/1_Paciente_Dashboard.py",  title="Paciente Dashboard",icon="🧑")
 car_hoy   = st.Page("pages/2_Carmen_Hoy.py",          title="Carmen Hoy",        icon="📅")
 car_pac   = st.Page("pages/3_Carmen_Pacientes.py",    title="Carmen Pacientes",  icon="📚")
