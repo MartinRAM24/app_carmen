@@ -396,6 +396,12 @@ def delete_foto(photo_id: int, send_to_trash: bool = True) -> bool:
     return True
 
 # --------- AGENDA / CITAS ---------
+# Paciente NO puede agendar hoy ni mañana (a partir del día 3)
+BLOQUEO_DIAS_MIN: int = 2
+
+def is_fecha_permitida(fecha: date) -> bool:
+    return fecha >= (date.today() + timedelta(days=BLOQUEO_DIAS_MIN))
+
 def _bloques_del_dia(fecha: date) -> list[tuple[time, time]]:
     wd = fecha.weekday()  # 0=lun ... 6=dom
     if 0 <= wd <= 4:
@@ -447,16 +453,24 @@ def ya_tiene_cita_en_ventana_7dias(paciente_id: int, fecha_ref: date) -> bool:
     return not d.empty
 
 def agendar_cita_autenticado(fecha: date, hora: time, paciente_id: int, nota: Optional[str] = None):
-    assert is_fecha_permitida(fecha), "La fecha seleccionada no está permitida (mínimo día 3)."
+    # Bloqueo duro: hoy y mañana no se puede (mínimo día 3)
+    if not is_fecha_permitida(fecha):
+        raise ValueError("La fecha seleccionada no está permitida. Debe ser a partir del tercer día.")
+
     if ya_tiene_cita_en_dia(paciente_id, fecha):
         raise ValueError("Ya tienes una cita ese día. Solo se permite una por día.")
+
     if ya_tiene_cita_en_ventana_7dias(paciente_id, fecha):
         raise ValueError("Solo se permite una cita cada 7 días (respecto a la fecha elegida).")
+
     try:
-        exec_sql("INSERT INTO citas(fecha, hora, paciente_id, nota) VALUES (%s, %s, %s, %s)",
-                 (fecha, hora, paciente_id, nota))
+        exec_sql(
+            "INSERT INTO citas(fecha, hora, paciente_id, nota) VALUES (%s, %s, %s, %s)",
+            (fecha, hora, paciente_id, nota)
+        )
     except pg_errors.UniqueViolation:
         raise ValueError("Ese horario ya fue tomado. Elige otro.")
+
 
 def citas_por_dia(fecha: date):
     return df_sql("""
