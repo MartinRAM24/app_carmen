@@ -171,6 +171,15 @@ def registrar_paciente(nombre: str, telefono: str, password: str) -> int:
             (nombre.strip(), tel, pw_hash),
         )
         pid = int(cur.fetchone()[0])
+
+    # 🚀 Provisiona carpeta de Drive al registro
+    try:
+        folder_id = ensure_patient_folder(nombre.strip(), pid)
+        exec_sql("UPDATE pacientes SET drive_folder_id=%s WHERE id=%s", (folder_id, pid))
+    except Exception as e:
+        # No bloqueamos el registro, pero avisamos: sin carpeta no se podrán subir PDFs/Fotos
+        st.warning(f"[Drive] No se pudo crear la carpeta del paciente (puedes reintentar desde Admin): {e}")
+
     try:
         st.cache_data.clear()
     except:
@@ -279,14 +288,31 @@ def ensure_patient_folder(nombre: str, pid: int) -> str:
     return folder["id"]
 
 def ensure_cita_folder(pid: int, fecha_str: str) -> str:
-    d = df_sql("SELECT drive_folder_id FROM pacientes WHERE id=%s", (pid,))
-    if d.empty or not (d.loc[0, "drive_folder_id"] or "").strip():
-        raise RuntimeError("El paciente no tiene carpeta de Drive asignada.")
-    patient_folder_id = d.loc[0, "drive_folder_id"].strip()
+    # Si ya está guardada la carpeta de la cita, úsala
+    m = df_sql(
+        "SELECT drive_cita_folder_id FROM mediciones WHERE paciente_id=%s AND fecha=%s",
+        (pid, fecha_str),
+    )
+    if not m.empty and (m.loc[0, "drive_cita_folder_id"] or "").strip():
+        return m.loc[0, "drive_cita_folder_id"].strip()
 
+    # Asegura carpeta de paciente: si falta, la crea aquí mismo 👇
+    d = df_sql("SELECT nombre, drive_folder_id FROM pacientes WHERE id=%s", (pid,))
+    if d.empty:
+        raise RuntimeError("Paciente no existe.")
+    patient_folder_id = (d.loc[0, "drive_folder_id"] or "").strip()
+    if not patient_folder_id:
+        # auto-provisiona carpeta del paciente y guarda en DB
+        folder_id = ensure_patient_folder(d.loc[0, "nombre"].strip(), pid)
+        exec_sql("UPDATE pacientes SET drive_folder_id=%s WHERE id=%s", (folder_id, pid))
+        patient_folder_id = folder_id
+
+    # A partir de aquí, igual que antes…
     drive = get_drive()
-    q = ("mimeType='application/vnd.google-apps.folder' and trashed=false "
-         f"and name='{fecha_str}' and '{patient_folder_id}' in parents")
+    q = (
+        "mimeType='application/vnd.google-apps.folder' and trashed=false "
+        f"and name='{fecha_str}' and '{patient_folder_id}' in parents"
+    )
     res = drive.files().list(
         q=q, fields="files(id)", pageSize=1,
         supportsAllDrives=True, includeItemsFromAllDrives=True,
@@ -298,13 +324,17 @@ def ensure_cita_folder(pid: int, fecha_str: str) -> str:
         meta = {"name": fecha_str, "mimeType": "application/vnd.google-apps.folder", "parents": [patient_folder_id]}
         cita_folder_id = drive.files().create(body=meta, fields="id", supportsAllDrives=True).execute()["id"]
 
-    exec_sql("""
+    exec_sql(
+        """
         INSERT INTO mediciones (paciente_id, fecha, drive_cita_folder_id)
         VALUES (%s,%s,%s)
         ON CONFLICT (paciente_id, fecha)
         DO UPDATE SET drive_cita_folder_id = EXCLUDED.drive_cita_folder_id
-    """, (pid, fecha_str, cita_folder_id))
+        """,
+        (pid, fecha_str, cita_folder_id),
+    )
     return cita_folder_id
+
 
 def upload_pdf_to_folder(file_bytes: bytes, filename: str, folder_id: str) -> dict:
     drive = get_drive()
