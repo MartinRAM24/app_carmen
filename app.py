@@ -281,6 +281,82 @@ def get_drive():
     creds = service_account.Credentials.from_service_account_info(i, scopes=SCOPES)
     return build("drive", "v3", credentials=creds)
 
+# --- Helpers Drive básicos ---
+
+def get_patient_folder_id(pid: int) -> str:
+    d = df_sql("SELECT drive_folder_id FROM pacientes WHERE id=%s", (pid,))
+    if d.empty or not (d.loc[0, "drive_folder_id"] or "").strip():
+        raise RuntimeError("El paciente no tiene carpeta de Drive asignada.")
+    return d.loc[0, "drive_folder_id"].strip()
+
+def enforce_patient_pdf_quota(patient_folder_id: str, keep: int = 10, send_to_trash: bool = True):
+    """
+    Mantiene solo 'keep' PDFs más recientes (entre la carpeta del paciente y sus subcarpetas).
+    Los PDFs más antiguos se envían a la papelera (o se borran si send_to_trash=False).
+    """
+    drive = get_drive()
+
+    def _list_pdfs_in(folder_id: str):
+        files, page_token = [], None
+        while True:
+            resp = drive.files().list(
+                q=f"'{folder_id}' in parents and mimeType='application/pdf' and trashed=false",
+                fields="nextPageToken, files(id, name, createdTime)",
+                orderBy="createdTime asc",
+                pageSize=1000,
+                pageToken=page_token,
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+            ).execute()
+            files.extend(resp.get("files", []))
+            page_token = resp.get("nextPageToken")
+            if not page_token:
+                break
+        return files
+
+    # PDFs en carpeta raíz del paciente
+    all_pdfs = _list_pdfs_in(patient_folder_id)
+
+    # PDFs en subcarpetas (cada fecha/cita)
+    subs, page_token = [], None
+    while True:
+        resp = drive.files().list(
+            q=f"'{patient_folder_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false",
+            fields="nextPageToken, files(id)",
+            pageSize=1000,
+            pageToken=page_token,
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+        ).execute()
+        subs.extend(resp.get("files", []))
+        page_token = resp.get("nextPageToken")
+        if not page_token:
+            break
+
+    for sf in subs:
+        all_pdfs.extend(_list_pdfs_in(sf["id"]))
+
+    # Si excede, enviar a papelera (o borrar)
+    if len(all_pdfs) > keep:
+        excess = len(all_pdfs) - keep
+        all_pdfs.sort(key=lambda x: x.get("createdTime", ""))
+        to_remove = all_pdfs[:excess]
+        for f in to_remove:
+            try:
+                if send_to_trash:
+                    drive.files().update(
+                        fileId=f["id"],
+                        body={"trashed": True},
+                        supportsAllDrives=True,
+                    ).execute()
+                else:
+                    drive.files().delete(
+                        fileId=f["id"],
+                        supportsAllDrives=True,
+                    ).execute()
+            except Exception as e:
+                st.info(f"[Drive] No se pudo depurar PDF {f.get('name')}: {e}")
+
 def make_anyone_reader(file_id: str):
     try:
         get_drive().permissions().create(
@@ -497,10 +573,6 @@ def eliminar_cita(cita_id: int) -> int:
     return n
 
 def upsert_medicion(pid: int, fecha: str, rutina_pdf: str | None, plan_pdf: str | None):
-    """
-    Inserta la fila si no existe.
-    Si ya existe, solo actualiza las columnas NO nulas recibidas (no pisa la otra).
-    """
     exec_sql(
         """
         INSERT INTO mediciones (paciente_id, fecha, rutina_pdf, plan_pdf)
@@ -512,7 +584,6 @@ def upsert_medicion(pid: int, fecha: str, rutina_pdf: str | None, plan_pdf: str 
         """,
         (pid, fecha, rutina_pdf, plan_pdf),
     )
-
 
 def asociar_medicion_a_cita(pid: int, fecha_str: str):
     d = df_sql("SELECT id FROM citas WHERE paciente_id=%s AND fecha=%s ORDER BY hora ASC LIMIT 1", (pid, fecha_str))
