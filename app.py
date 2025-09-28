@@ -1,10 +1,7 @@
 # app.py
 import streamlit as st
-from modules.core import is_admin_ok, login_paciente, registrar_paciente, normalize_tel
 
 st.set_page_config(page_title="Carmen Coach", page_icon="🩺", layout="wide")
-
-import streamlit as st
 
 CUSTOM_CSS = """
 /* Sidebar */
@@ -25,9 +22,10 @@ main.block-container {
 /* Tarjetas internas (expanders, tabs, forms) */
 section[data-testid="stSidebarNav"] { background: transparent; }
 div[data-testid="stExpander"] > details {
-  background: #FFFFFF;
+  background: #f0f0f0;  /* gris claro */
   border-radius: 12px;
-  border: 1px solid #E5E7EB;
+  border: 1px solid #d6d6d6;
+  color: #111 !important; /* asegura que el texto sea oscuro y legible */
 }
 
 /* Inputs */
