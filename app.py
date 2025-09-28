@@ -7,6 +7,10 @@ st.set_page_config(
     page_icon="assets/logo.png",  # usa tu logo como icono
     layout="wide"
 )
+st.image("assets/logo.png", width=120)  # ajusta el tamaño a gusto
+st.title("Carmen Coach")
+st.caption("Bienvenida/o. Elige cómo quieres entrar.")
+
 
 # Estado base
 st.session_state.setdefault("role", None)
