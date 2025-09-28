@@ -496,13 +496,23 @@ def eliminar_cita(cita_id: int) -> int:
     except: pass
     return n
 
-def upsert_medicion(pid: int, fecha_str: str, rutina_pdf: str | None = None, plan_pdf: str | None = None):
-    exec_sql("""
+def upsert_medicion(pid: int, fecha: str, rutina_pdf: str | None, plan_pdf: str | None):
+    """
+    Inserta la fila si no existe.
+    Si ya existe, solo actualiza las columnas NO nulas recibidas (no pisa la otra).
+    """
+    exec_sql(
+        """
         INSERT INTO mediciones (paciente_id, fecha, rutina_pdf, plan_pdf)
         VALUES (%s, %s, %s, %s)
         ON CONFLICT (paciente_id, fecha)
-        DO UPDATE SET rutina_pdf = EXCLUDED.rutina_pdf, plan_pdf = EXCLUDED.plan_pdf
-    """, (pid, fecha_str, rutina_pdf, plan_pdf))
+        DO UPDATE SET
+          rutina_pdf = COALESCE(EXCLUDED.rutina_pdf, mediciones.rutina_pdf),
+          plan_pdf   = COALESCE(EXCLUDED.plan_pdf,   mediciones.plan_pdf)
+        """,
+        (pid, fecha, rutina_pdf, plan_pdf),
+    )
+
 
 def asociar_medicion_a_cita(pid: int, fecha_str: str):
     d = df_sql("SELECT id FROM citas WHERE paciente_id=%s AND fecha=%s ORDER BY hora ASC LIMIT 1", (pid, fecha_str))
