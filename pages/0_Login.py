@@ -1,15 +1,25 @@
 # pages/0_Login.py
 import streamlit as st
 from modules.core import is_admin_ok, login_paciente, registrar_paciente, normalize_tel
+import base64
+
+def get_base64_of_bin_file(bin_file):
+    with open(bin_file, "rb") as f:
+        data = f.read()
+    return base64.b64encode(data).decode()
+
+logo_base64 = get_base64_of_bin_file("assets/logo.png")
 
 st.markdown(
-    """
-    <div style="display: flex; justify-content: center;">
-        <img src="assets/logo.png" width="150">
+    f"""
+    <div style="text-align: center;">
+        <img src="data:image/png;base64,{logo_base64}" width="150">
+        <p>Bienvenida/o. Elige cómo quieres entrar.</p>
     </div>
     """,
     unsafe_allow_html=True
 )
+
 st.caption("Bienvenida/o. Elige cómo quieres entrar.")
 
 # Estado base
