@@ -63,7 +63,7 @@ with colr:
         if "hora" not in df_m.columns: df_m["hora"] = pd.NaT
         df_m["hora_txt"] = df_m["hora"].apply(lambda t: t.strftime("%H:%M") if pd.notna(t) else None).astype(str)
         df_show = todos_slots.merge(df_m, on="hora_txt", how="left")
-        cols = ["id_cita","paciente_id","nombre","telefono","fecha","nota"]
+        cols = ["id_cita","paciente_id","nombre","telefono","fecha","hora","nota"]
         for c in cols:
             if c not in df_show.columns: df_show[c] = None
         df_show["estado"] = df_show["id_cita"].apply(lambda x: "✅ libre" if pd.isna(x) else "🟡 ocupado")
