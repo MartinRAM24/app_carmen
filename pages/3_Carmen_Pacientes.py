@@ -1,13 +1,16 @@
 # pages/3_Carmen_Pacientes.py
 import streamlit as st
-from pathlib import Path
 from datetime import date
+from pathlib import Path                      # <- lo necesitas más abajo para PDFs
 from modules.core import (
     df_sql, exec_sql, ensure_patient_folder, upsert_medicion, asociar_medicion_a_cita,
     upload_pdf_to_folder, upload_image_to_folder, enforce_patient_pdf_quota,
     get_drive, ensure_cita_folder, drive_image_view_url, drive_image_download_url,
-    delete_foto, delete_medicion_dia
+    delete_foto, delete_medicion_dia,
+    upsert_paciente,             # <- IMPORTANTE
 )
+
+import re
 import pandas as pd
 
 st.set_page_config(page_title="Carmen — Pacientes", page_icon="🧾", layout="wide")
@@ -113,6 +116,42 @@ if st.session_state.get("role") != "admin":
     st.switch_page("app.py")
 
 st.title("📚 Gestión de Pacientes")
+
+# Botón para crear paciente
+btn_col1, btn_col2 = st.columns([1, 6])
+with btn_col1:
+    if st.button("➕ Nuevo paciente", use_container_width=True):
+        @st.dialog("Registrar paciente")
+        def _modal_nuevo_paciente():
+            with st.form("form_nuevo_paciente"):
+                np_nombre = st.text_input("Nombre completo")
+                np_tel    = st.text_input("Teléfono (solo dígitos o con +52)")
+                np_fnac   = st.text_input("Fecha de nacimiento (YYYY-MM-DD)", placeholder="Opcional")
+                np_mail   = st.text_input("Correo", placeholder="Opcional")
+                np_notas  = st.text_area("Notas", placeholder="Opcional")
+                crear_ok  = st.form_submit_button("Guardar")
+
+            if crear_ok:
+                if not (np_nombre.strip() and np_tel.strip()):
+                    st.error("Nombre y teléfono son obligatorios.")
+                    return
+                try:
+                    nuevo = upsert_paciente(
+                        np_nombre, np_tel,
+                        np_fnac.strip() or None,
+                        np_mail.strip() or None,
+                        np_notas.strip() or None,
+                    )
+                    # refrescar la lista de búsqueda y precargar selección
+                    st.session_state["bus_pac_df"] = df_sql(
+                        "SELECT id, nombre FROM pacientes ORDER BY nombre"
+                    )
+                    st.success(f"Paciente guardado ✅ (ID {nuevo['id']})")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"No se pudo guardar: {e}")
+
+        _modal_nuevo_paciente()
 
 # Buscar paciente
 with st.form("buscar_paciente"):

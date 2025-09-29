@@ -132,6 +132,47 @@ def is_admin_ok(user: str, password: str) -> bool:
 def normalize_tel(t: str) -> str:
     return re.sub(r'[-\s]+', '', (t or '').strip().lower())
 
+def upsert_paciente(nombre: str,
+                    telefono: str,
+                    fecha_nac: str | None = None,
+                    correo: str | None = None,
+                    notas: str | None = None) -> dict:
+    """Crea (o actualiza por teléfono) y devuelve {"id", "nombre"}."""
+    tel_n = normalize_tel(telefono)
+    with conn().cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO pacientes (nombre, telefono, fecha_nac, correo, notas)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (telefono)
+            DO UPDATE SET
+              nombre    = EXCLUDED.nombre,
+              fecha_nac = EXCLUDED.fecha_nac,
+              correo    = EXCLUDED.correo,
+              notas     = EXCLUDED.notas
+            RETURNING id, nombre
+            """,
+            (nombre.strip(), tel_n, fecha_nac, correo, notas),
+        )
+        pid, nom = cur.fetchone()
+
+    # (opcional) asegurar carpeta de Drive del paciente si no existe
+    try:
+        df = df_sql("SELECT drive_folder_id FROM pacientes WHERE id=%s", (pid,))
+        if df.empty or not (df.loc[0, "drive_folder_id"] or "").strip():
+            folder_id = ensure_patient_folder(nombre.strip(), int(pid))
+            exec_sql("UPDATE pacientes SET drive_folder_id=%s WHERE id=%s", (folder_id, int(pid)))
+    except Exception:
+        pass
+
+    try:
+        st.cache_data.clear()
+    except Exception:
+        pass
+
+    return {"id": int(pid), "nombre": nom}
+
+
 def _peppered(pw: str) -> bytes:
     return (pw.encode() + PEPPER) if PEPPER else pw.encode()
 
@@ -654,3 +695,4 @@ def enviar_recordatorios_manana(dry_run: bool = False) -> dict:
         res["detalles"].append(item)
 
     return res
+
