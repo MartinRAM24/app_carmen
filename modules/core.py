@@ -3,12 +3,10 @@ import os, io, re, hashlib
 from pathlib import Path
 from typing import Optional
 from datetime import date, datetime, timedelta, time
-
 import pandas as pd
 import psycopg
 import streamlit as st
 from psycopg import errors as pg_errors
-
 from google.oauth2.credentials import Credentials
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -178,6 +176,73 @@ def _peppered(pw: str) -> bytes:
 
 def hash_password(pw: str) -> str:
     return bcrypt.hashpw(_peppered(pw), bcrypt.gensalt()).decode()
+
+def registrar_paciente_admin(nombre: str, telefono: str, password6: str) -> int:
+    """
+    Crea (o actualiza) un paciente con contraseña definida por Carmen.
+    La contraseña DEBE ser exactamente 6 dígitos.
+    Si el teléfono ya existe: actualiza nombre y password_hash.
+    Devuelve el id del paciente.
+    """
+    if not re.fullmatch(r"\d{6}", str(password6 or "")):
+        raise ValueError("La contraseña debe ser exactamente 6 dígitos.")
+
+    tel = normalize_tel(telefono)
+    pw_hash = hash_password(password6)
+
+    with conn().cursor() as cur:
+        # ¿Existe ya ese teléfono?
+        cur.execute("SELECT id FROM pacientes WHERE telefono=%s LIMIT 1", (tel,))
+        row = cur.fetchone()
+        if row:
+            pid = int(row[0])
+            cur.execute(
+                "UPDATE pacientes SET nombre=%s, password_hash=%s WHERE id=%s",
+                (nombre.strip(), pw_hash, pid)
+            )
+        else:
+            cur.execute(
+                "INSERT INTO pacientes (nombre, telefono, password_hash) VALUES (%s, %s, %s) RETURNING id",
+                (nombre.strip(), tel, pw_hash),
+            )
+            pid = int(cur.fetchone()[0])
+
+    # (opcional) asegurar carpeta de Drive al crear/actualizar
+    try:
+        d = df_sql("SELECT drive_folder_id FROM pacientes WHERE id=%s", (pid,))
+        folder_id = (d.loc[0, "drive_folder_id"] or "").strip() if not d.empty else ""
+        if not folder_id:
+            folder_id = ensure_patient_folder(nombre.strip(), pid)
+            exec_sql("UPDATE pacientes SET drive_folder_id=%s WHERE id=%s", (folder_id, pid))
+    except Exception:
+        pass
+
+    try: st.cache_data.clear()
+    except: pass
+    return pid
+
+
+def cambiar_password_paciente(paciente_id: int, pw_actual: str, pw_nueva6: str) -> None:
+    """
+    Cambia la contraseña de un paciente verificando la actual.
+    La nueva debe ser 6 dígitos.
+    """
+    if not re.fullmatch(r"\d{6}", str(pw_nueva6 or "")):
+        raise ValueError("La nueva contraseña debe ser exactamente 6 dígitos.")
+
+    d = df_sql("SELECT password_hash FROM pacientes WHERE id=%s LIMIT 1", (paciente_id,))
+    if d.empty:
+        raise ValueError("Paciente no encontrado.")
+
+    pw_hash = d.iloc[0].get("password_hash")
+    # Si no tenía password previa, también pedimos la 'actual' por seguridad mínima
+    if not pw_hash or not check_password(pw_actual or "", str(pw_hash)):
+        raise ValueError("La contraseña actual no es válida.")
+
+    exec_sql("UPDATE pacientes SET password_hash=%s WHERE id=%s", (hash_password(pw_nueva6), paciente_id))
+    try: st.cache_data.clear()
+    except: pass
+
 
 def check_password(pw: str, pw_hash: str) -> bool:
     try:

@@ -10,6 +10,7 @@ from modules.core import (
     upsert_paciente,             # <- IMPORTANTE
 )
 import pandas as pd
+from modules.core import registrar_paciente_admin  # ← importa arriba del archivo
 
 st.set_page_config(page_title="Carmen — Pacientes", page_icon="🧾", layout="wide")
 
@@ -115,41 +116,34 @@ if st.session_state.get("role") != "admin":
 
 st.title("📚 Gestión de Pacientes")
 
-# Botón para crear paciente
-btn_col1, btn_col2 = st.columns([1, 6])
-with btn_col1:
-    if st.button("➕ Nuevo paciente", use_container_width=True):
-        @st.dialog("Registrar paciente")
-        def _modal_nuevo_paciente():
-            with st.form("form_nuevo_paciente"):
-                np_nombre = st.text_input("Nombre completo")
-                np_tel    = st.text_input("Teléfono (solo dígitos o con +52)")
-                np_fnac   = st.text_input("Fecha de nacimiento (YYYY-MM-DD)", placeholder="Opcional")
-                np_mail   = st.text_input("Correo", placeholder="Opcional")
-                np_notas  = st.text_area("Notas", placeholder="Opcional")
-                crear_ok  = st.form_submit_button("Guardar")
+# --- Botón + modal para registrar paciente ---
+if st.button("➕ Registrar paciente (con contraseña de 6 dígitos)"):
+    @st.dialog("Registrar nuevo paciente")
+    def _dlg_nuevo_paciente():
+        with st.form("form_new_paciente_admin", clear_on_submit=False):
+            nombre_n = st.text_input("Nombre completo")
+            tel_n    = st.text_input("Teléfono (10 dígitos MX, sin signos)")
+            pw6      = st.text_input("Contraseña (6 dígitos)", type="password", max_chars=6, help="Exactamente 6 dígitos")
+            ok_reg   = st.form_submit_button("Crear")
 
-            if crear_ok:
-                if not (np_nombre.strip() and np_tel.strip()):
-                    st.error("Nombre y teléfono son obligatorios.")
-                    return
-                try:
-                    nuevo = upsert_paciente(
-                        np_nombre, np_tel,
-                        np_fnac.strip() or None,
-                        np_mail.strip() or None,
-                        np_notas.strip() or None,
-                    )
-                    # refrescar la lista de búsqueda y precargar selección
-                    st.session_state["bus_pac_df"] = df_sql(
-                        "SELECT id, nombre FROM pacientes ORDER BY nombre"
-                    )
-                    st.success(f"Paciente guardado ✅ (ID {nuevo['id']})")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"No se pudo guardar: {e}")
+        if ok_reg:
+            try:
+                if not (nombre_n.strip() and tel_n.strip() and pw6):
+                    st.error("Completa todos los campos."); return
+                if not re.fullmatch(r"\d{10,15}", re.sub(r"\D+", "", tel_n)):
+                    st.error("Teléfono inválido. Ingresa solo dígitos (10–15)."); return
+                if not re.fullmatch(r"\d{6}", pw6):
+                    st.error("La contraseña debe ser exactamente 6 dígitos."); return
 
-        _modal_nuevo_paciente()
+                pid = registrar_paciente_admin(nombre_n, tel_n, pw6)
+                st.success(f"Paciente creado/actualizado ✅ (ID {pid}).")
+                st.info(f"Contraseña asignada: {pw6}")
+                st.rerun()
+            except Exception as e:
+                st.error(f"No se pudo registrar: {e}")
+
+    _dlg_nuevo_paciente()
+
 
 # Buscar paciente
 with st.form("buscar_paciente"):

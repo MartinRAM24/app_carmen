@@ -6,7 +6,7 @@ from modules.core import (
     df_sql, to_drive_preview,
     drive_image_view_url, drive_image_download_url)
 import pandas as pd
-
+from modules.core import cambiar_password_paciente
 
 st.set_page_config(page_title="Paciente — Dashboard", page_icon="🧑", layout="wide")
 
@@ -219,6 +219,27 @@ with c2:
             st.write("**Fecha nac.**:", r.get("fecha_nac") or "—")
             st.write("**Correo**:", r.get("correo") or "—")
             st.write("**Notas**:"); st.write(r.get("notas") or "—")
+
+        st.divider()
+        st.markdown("### 🔐 Cambiar contraseña")
+
+        with st.form("form_cambiar_pw"):
+            pw_actual = st.text_input("Contraseña actual", type="password")
+            pw_nueva = st.text_input("Nueva contraseña (6 dígitos)", type="password", max_chars=6)
+            pw_nueva2 = st.text_input("Repite la nueva contraseña", type="password", max_chars=6)
+            ok_pw = st.form_submit_button("Actualizar contraseña")
+
+        if ok_pw:
+            if not (pw_actual and pw_nueva and pw_nueva2):
+                st.error("Completa todos los campos.")
+            elif pw_nueva != pw_nueva2:
+                st.error("Las nuevas contraseñas no coinciden.")
+            else:
+                try:
+                    cambiar_password_paciente(st.session_state["paciente"]["id"], pw_actual, pw_nueva)
+                    st.success("Contraseña actualizada ✅")
+                except Exception as e:
+                    st.error(str(e))
 
     with st.expander("Ver mis PDFs", expanded=False):
         citas = df_sql("SELECT fecha, rutina_pdf, plan_pdf FROM mediciones WHERE paciente_id=%s ORDER BY fecha DESC", (pid,))
