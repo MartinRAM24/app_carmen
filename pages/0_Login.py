@@ -193,3 +193,76 @@ with tab_pac:
                 except Exception as e:
                     st.error(f"No se pudo registrar: {e}")
 
+    ig_b64 = get_base64_of_bin_file("assets/ig.png")
+    ttk_b64 = get_base64_of_bin_file("assets/tiktok.png")
+    wa_b64 = get_base64_of_bin_file("assets/wa.png")
+
+    # Links
+    IG_URL = "https://www.instagram.com/carmen._ochoa?igsh=dnd2aGt5a25xYTg0"
+    # TikTok
+    TTK_PROFILE_URL = "https://www.tiktok.com/@carmen_ochoa123?_t=ZS-907SiUuhJDw&_r=1"
+    TTK_VIDEO_ID = "7521784372152831240"
+    TTK_EMBED_URL = f"https://www.tiktok.com/embed/{TTK_VIDEO_ID}"
+
+    WA_NUMBER = "523511974405"  # 52 + número sin signos
+    WA_TEXT = "Hola Carmen, quiero una consulta."
+    wa_link = f"https://wa.me/{WA_NUMBER}?text={quote_plus(WA_TEXT)}"
+
+    # ---- 📣 Redes (a la derecha)
+    with tab_social:
+        st.subheader("Conecta con Carmen")
+
+        c1, c2, c3 = st.columns(3)
+
+        with c1:
+            st.markdown(
+                f"""
+                <a href="{IG_URL}" target="_blank" rel="noopener">
+                  <img src="data:image/png;base64,{ig_b64}" 
+                       alt="Instagram" 
+                       style="width:120px; border-radius:12px; display:block; margin:0 auto; cursor:pointer;">
+                </a>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        with c2:
+            st.markdown(
+                f"""
+                <a href="{TTK_PROFILE_URL}" target="_blank" rel="noopener">
+                  <img src="data:image/png;base64,{ttk_b64}" 
+                       alt="TikTok" 
+                       style="width:120px; border-radius:12px; display:block; margin:0 auto; cursor:pointer;">
+                </a>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        with c3:
+            st.markdown(
+                f"""
+                <a href="{wa_link}" target="_blank" rel="noopener">
+                  <img src="data:image/png;base64,{wa_b64}" 
+                       alt="WhatsApp" 
+                       style="width:120px; border-radius:12px; display:block; margin:0 auto; cursor:pointer;">
+                </a>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        st.markdown("---")
+        st.caption("🎥 Video destacado de TikTok")
+
+        # Embed oficial de TikTok
+        st.components.v1.html(
+            f"""
+            <div style="display:flex; justify-content:center;">
+                <iframe src="https://www.tiktok.com/embed/v2/7521784372152831240"
+                        width="350" height="600" frameborder="0"
+                        allow="autoplay; encrypted-media"
+                        allowfullscreen></iframe>
+            </div>
+            """,
+            height=650,
+        )
+
