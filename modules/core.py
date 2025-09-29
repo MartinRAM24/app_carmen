@@ -317,8 +317,7 @@ def login_paciente(telefono: str, password: str) -> Optional[dict]:
         return {"id": int(r["id"]), "nombre": r["nombre"], "telefono": r["telefono"]}
     return None
 
-# --------- DRIVE HELPERS ---------
-@st.cache_resource
+
 # --------- DRIVE HELPERS ---------
 from google.oauth2.credentials import Credentials
 from google.oauth2 import service_account
