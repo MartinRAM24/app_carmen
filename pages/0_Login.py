@@ -25,7 +25,9 @@ st.markdown(
 st.session_state.setdefault("role", None)
 st.session_state.setdefault("paciente", None)
 
-tab_coach, tab_pac, tab_social= st.tabs(["👩‍⚕️ Coach", "🧑 Paciente", "📣 Redes"])
+ENABLE_SOCIAL = False   # cambia a True si lo quieres activar
+
+tab_coach, tab_pac, tab_social = st.tabs(["👩‍⚕️ Coach", "🧑 Paciente", "📣 Redes"])
 
 # ===== Coach =====
 with tab_coach:
@@ -114,78 +116,82 @@ with tab_pac:
 
 # ---- 📣 Redes (a la derecha)
 with tab_social:
-    st.subheader("Conecta con Carmen")
+    if ENABLE_SOCIAL:
+        st.subheader("Conecta con Carmen")
 
-    # Base64 de iconos (si ya tienes load_b64 arriba, esto va perfecto)
-    ig_b64  = load_b64("assets/ig.png")
-    ttk_b64 = load_b64("assets/tiktok.png")
-    wa_b64  = load_b64("assets/wa.png")
+        # Base64 de iconos (si ya tienes load_b64 arriba, esto va perfecto)
+        ig_b64 = load_b64("assets/ig.png")
+        ttk_b64 = load_b64("assets/tiktok.png")
+        wa_b64 = load_b64("assets/wa.png")
 
-    # Links
-    IG_URL           = "https://www.instagram.com/carmen._ochoa?igsh=dnd2aGt5a25xYTg0"
-    TTK_PROFILE_URL  = "https://www.tiktok.com/@carmen_ochoa123?_t=ZS-907SiUuhJDw&_r=1"
-    TTK_VIDEO_ID     = "7521784372152831240"
-    TTK_EMBED_URL    = f"https://www.tiktok.com/embed/v2/{TTK_VIDEO_ID}"
+        # Links
+        IG_URL = "https://www.instagram.com/carmen._ochoa?igsh=dnd2aGt5a25xYTg0"
+        TTK_PROFILE_URL = "https://www.tiktok.com/@carmen_ochoa123?_t=ZS-907SiUuhJDw&_r=1"
+        TTK_VIDEO_ID = "7521784372152831240"
+        TTK_EMBED_URL = f"https://www.tiktok.com/embed/v2/{TTK_VIDEO_ID}"
 
-    WA_NUMBER = "523511974405"  # 52 + número sin signos
-    WA_TEXT   = "Hola Carmen, quiero una consulta."
-    wa_link   = f"https://wa.me/{WA_NUMBER}?text={quote_plus(WA_TEXT)}"
+        WA_NUMBER = "523511974405"  # 52 + número sin signos
+        WA_TEXT = "Hola Carmen, quiero una consulta."
+        wa_link = f"https://wa.me/{WA_NUMBER}?text={quote_plus(WA_TEXT)}"
 
-    # Fila de iconos clicables
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.markdown(
-            f"""
-            <a href="{IG_URL}" target="_blank" rel="noopener">
-              <img src="data:image/png;base64,{ig_b64}"
-                   alt="Instagram"
-                   style="width:120px; border-radius:12px; display:block; margin:0 auto; cursor:pointer;">
-            </a>
-            """,
-            unsafe_allow_html=True,
-        )
-    with c2:
-        st.markdown(
-            f"""
-            <a href="{TTK_PROFILE_URL}" target="_blank" rel="noopener">
-              <img src="data:image/png;base64,{ttk_b64}"
-                   alt="TikTok"
-                   style="width:120px; border-radius:12px; display:block; margin:0 auto; cursor:pointer;">
-            </a>
-            """,
-            unsafe_allow_html=True,
-        )
-    with c3:
-        st.markdown(
-            f"""
-            <a href="{wa_link}" target="_blank" rel="noopener">
-              <img src="data:image/png;base64,{wa_b64}"
-                   alt="WhatsApp"
-                   style="width:120px; border-radius:12px; display:block; margin:0 auto; cursor:pointer;">
-            </a>
-            """,
-            unsafe_allow_html=True,
-        )
+        # Fila de iconos clicables
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.markdown(
+                f"""
+                    <a href="{IG_URL}" target="_blank" rel="noopener">
+                      <img src="data:image/png;base64,{ig_b64}"
+                           alt="Instagram"
+                           style="width:120px; border-radius:12px; display:block; margin:0 auto; cursor:pointer;">
+                    </a>
+                    """,
+                unsafe_allow_html=True,
+            )
+        with c2:
+            st.markdown(
+                f"""
+                    <a href="{TTK_PROFILE_URL}" target="_blank" rel="noopener">
+                      <img src="data:image/png;base64,{ttk_b64}"
+                           alt="TikTok"
+                           style="width:120px; border-radius:12px; display:block; margin:0 auto; cursor:pointer;">
+                    </a>
+                    """,
+                unsafe_allow_html=True,
+            )
+        with c3:
+            st.markdown(
+                f"""
+                    <a href="{wa_link}" target="_blank" rel="noopener">
+                      <img src="data:image/png;base64,{wa_b64}"
+                           alt="WhatsApp"
+                           style="width:120px; border-radius:12px; display:block; margin:0 auto; cursor:pointer;">
+                    </a>
+                    """,
+                unsafe_allow_html=True,
+            )
 
-    st.markdown("---")
-    st.caption("🎥 Video destacado de TikTok")
+        st.markdown("---")
+        st.caption("🎥 Video destacado de TikTok")
 
-    # ⚡ Render perezoso: solo carga el iFrame si el usuario lo pide
-    show_video = st.toggle("Mostrar video", value=False, key="show_tiktok_embed")
-    if show_video:
-        st.components.v1.html(
-            f"""
-            <div style="display:flex; justify-content:center;">
-                <iframe src="{TTK_EMBED_URL}"
-                        width="350" height="600" frameborder="0"
-                        allow="autoplay; encrypted-media"
-                        allowfullscreen></iframe>
-            </div>
-            """,
-            height=650,
-        )
+        # ⚡ Render perezoso: solo carga el iFrame si el usuario lo pide
+        show_video = st.toggle("Mostrar video", value=False, key="show_tiktok_embed")
+        if show_video:
+            st.components.v1.html(
+                f"""
+                    <div style="display:flex; justify-content:center;">
+                        <iframe src="{TTK_EMBED_URL}"
+                                width="350" height="600" frameborder="0"
+                                allow="autoplay; encrypted-media"
+                                allowfullscreen></iframe>
+                    </div>
+                    """,
+                height=650,
+            )
+        else:
+            # Alternativa ligera cuando el iFrame no está cargado
+            st.link_button("Abrir video en TikTok", f"https://www.tiktok.com/@carmen_ochoa123/video/{TTK_VIDEO_ID}")
+
     else:
-        # Alternativa ligera cuando el iFrame no está cargado
-        st.link_button("Abrir video en TikTok", f"https://www.tiktok.com/@carmen_ochoa123/video/{TTK_VIDEO_ID}")
+        st.info("⚡ Sección de redes desactivada temporalmente")
 
 
