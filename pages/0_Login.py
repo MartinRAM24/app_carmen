@@ -25,7 +25,7 @@ st.markdown(
 st.session_state.setdefault("role", None)
 st.session_state.setdefault("paciente", None)
 
-ENABLE_SOCIAL = False   # cambia a True si lo quieres activar
+ENABLE_SOCIAL = True   # cambia a True si lo quieres activar
 
 tab_coach, tab_pac, tab_social = st.tabs(["👩‍⚕️ Coach", "🧑 Paciente", "📣 Redes"])
 
