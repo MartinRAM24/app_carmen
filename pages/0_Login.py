@@ -164,7 +164,7 @@ with tab_pac:
         st.components.v1.html(
             f"""
             <div style="display:flex; justify-content:center;">
-                <iframe src="https://www.tiktok.com/embed/v2/7521784372152831240"
+                <iframe src="{TTK_EMBED_URL}"
                         width="350" height="600" frameborder="0"
                         allow="autoplay; encrypted-media"
                         allowfullscreen></iframe>
