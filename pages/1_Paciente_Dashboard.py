@@ -220,26 +220,42 @@ with c2:
             st.write("**Correo**:", r.get("correo") or "—")
             st.write("**Notas**:"); st.write(r.get("notas") or "—")
 
+        # --- en algún lugar visible del dashboard del paciente (por ejemplo, al final) ---
         st.divider()
-        st.markdown("### 🔐 Cambiar contraseña")
+        col1, col2 = st.columns([1, 4])
+        with col1:
+            if st.button("🔐 Cambiar contraseña", use_container_width=True):
+                @st.dialog("Cambiar contraseña")
+                def _dlg_cambiar_pw():
+                    with st.form("form_cambiar_pw_modal", clear_on_submit=False):
+                        pw_actual = st.text_input("Contraseña actual", type="password")
+                        pw_nueva = st.text_input("Nueva (6 dígitos)", type="password", max_chars=6,
+                                                 help="Debe ser exactamente 6 dígitos")
+                        pw_nueva2 = st.text_input("Repite la nueva", type="password", max_chars=6)
+                        ok = st.form_submit_button("Actualizar contraseña")
 
-        with st.form("form_cambiar_pw"):
-            pw_actual = st.text_input("Contraseña actual", type="password")
-            pw_nueva = st.text_input("Nueva contraseña (6 dígitos)", type="password", max_chars=6)
-            pw_nueva2 = st.text_input("Repite la nueva contraseña", type="password", max_chars=6)
-            ok_pw = st.form_submit_button("Actualizar contraseña")
+                    if ok:
+                        # Validaciones rápidas en cliente
+                        if not pw_actual or not pw_nueva or not pw_nueva2:
+                            st.error("Completa todos los campos.");
+                            return
+                        if pw_nueva != pw_nueva2:
+                            st.error("Las nuevas contraseñas no coinciden.");
+                            return
+                        if not re.fullmatch(r"\d{6}", pw_nueva):
+                            st.error("La nueva contraseña debe tener exactamente 6 dígitos.");
+                            return
 
-        if ok_pw:
-            if not (pw_actual and pw_nueva and pw_nueva2):
-                st.error("Completa todos los campos.")
-            elif pw_nueva != pw_nueva2:
-                st.error("Las nuevas contraseñas no coinciden.")
-            else:
-                try:
-                    cambiar_password_paciente(st.session_state["paciente"]["id"], pw_actual, pw_nueva)
-                    st.success("Contraseña actualizada ✅")
-                except Exception as e:
-                    st.error(str(e))
+                        try:
+                            pid = int(st.session_state["paciente"]["id"])
+                            cambiar_password_paciente(pid, pw_actual, pw_nueva)
+                            st.success("Contraseña actualizada ✅")
+                            st.rerun()  # cierra el modal y refresca
+                        except Exception as e:
+                            st.error(str(e))
+
+
+                _dlg_cambiar_pw()
 
     with st.expander("Ver mis PDFs", expanded=False):
         citas = df_sql("SELECT fecha, rutina_pdf, plan_pdf FROM mediciones WHERE paciente_id=%s ORDER BY fecha DESC", (pid,))
