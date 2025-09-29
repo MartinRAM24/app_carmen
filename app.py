@@ -123,7 +123,6 @@ else:
 
 from modules.core import setup_db_safe
 setup_db_safe()
-
 nav.run()
 
 

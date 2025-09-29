@@ -211,11 +211,11 @@ with tab_pac:
 
     # ---- 📣 Redes (a la derecha)
     with tab_social:
-       st.subheader("Conecta con Carmen")
+        st.subheader("Conecta con Carmen")
 
-       c1, c2, c3 = st.columns(3)
+        c1, c2, c3 = st.columns(3)
 
-       with c1:
+        with c1:
             st.markdown(
                 f"""
                 <a href="{IG_URL}" target="_blank" rel="noopener">
@@ -227,7 +227,7 @@ with tab_pac:
                 unsafe_allow_html=True,
             )
 
-       with c2:
+        with c2:
             st.markdown(
                 f"""
                 <a href="{TTK_PROFILE_URL}" target="_blank" rel="noopener">
@@ -239,7 +239,7 @@ with tab_pac:
                 unsafe_allow_html=True,
             )
 
-       with c3:
+        with c3:
             st.markdown(
                 f"""
                 <a href="{wa_link}" target="_blank" rel="noopener">
@@ -266,3 +266,4 @@ with tab_pac:
             """,
             height=650,
         )
+
