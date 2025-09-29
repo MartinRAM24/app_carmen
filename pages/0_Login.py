@@ -3,9 +3,6 @@ import streamlit as st
 from modules.core import is_admin_ok, login_paciente, registrar_paciente, normalize_tel
 import base64
 from urllib.parse import quote_plus
-from modules.theme import apply_theme
-
-apply_theme()
 
 @st.cache_data
 def load_b64(path: str) -> str:
