@@ -14,7 +14,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 from googleapiclient.errors import HttpError
-
+import requests
 import bcrypt
 
 # --------- Secrets / env ---------
@@ -543,3 +543,114 @@ def delete_medicion_dia(
             pass
     try: st.cache_data.clear()
     except: pass
+
+# ========== WHATSAPP / RECORDATORIOS ==========
+
+def citas_manana():
+    """Citas de mañana (fecha = hoy + 1) con datos de paciente."""
+    return query_df(
+        """
+        SELECT c.id AS id_cita, c.fecha, c.hora, c.nota,
+               p.id AS paciente_id, p.nombre, p.telefono
+        FROM citas c
+        JOIN pacientes p ON p.id = c.paciente_id
+        WHERE c.fecha = CURRENT_DATE + INTERVAL '1 day'
+        ORDER BY c.hora
+        """
+    )
+
+def _fmt_fecha_es(v) -> str:
+    try: return pd.to_datetime(v).strftime("%d/%m/%Y")
+    except Exception: return str(v)
+
+def _fmt_hora_es(v) -> str:
+    try: return pd.to_datetime(str(v)).strftime("%H:%M")
+    except Exception: return str(v)
+
+def _to_e164_mx(tel: str) -> str | None:
+    """Normaliza teléfonos a E.164 (+52XXXXXXXXXX si recibe 10 dígitos de MX)."""
+    if not tel: return None
+    t = re.sub(r"\D+", "", str(tel))
+    if not t: return None
+    if str(tel).startswith("+"):
+        return str(tel)
+    if t.startswith("52"):
+        return f"+{t}"
+    if len(t) == 10:
+        return f"+52{t}"
+    return None
+
+def _wa_send_meta(to_e164: str, nombre: str, fecha_txt: str, hora_txt: str):
+    """Envía mensaje por plantilla (WhatsApp Cloud API / Meta)."""
+    cfg = st.secrets["whatsapp"]
+    url = f"https://graph.facebook.com/v19.0/{cfg['PHONE_NUMBER_ID']}/messages"
+    headers = {
+        "Authorization": f"Bearer {cfg['TOKEN']}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to_e164,
+        "type": "template",
+        "template": {
+            "name": cfg["TEMPLATE"],
+            "language": {"code": cfg.get("LANG", "es_MX")},
+            "components": [
+                {"type": "body", "parameters": [
+                    {"type": "text", "text": nombre or "Paciente"},
+                    {"type": "text", "text": fecha_txt},
+                    {"type": "text", "text": hora_txt},
+                ]}
+            ],
+        },
+    }
+    r = requests.post(url, headers=headers, json=payload, timeout=15)
+    r.raise_for_status()
+    return r.json()
+
+def enviar_recordatorios_manana(dry_run: bool = False) -> dict:
+    """
+    Envía (o simula) recordatorios de WhatsApp para TODAS las citas de mañana.
+    Devuelve resumen {"total", "enviados", "fallidos", "detalles":[...]}.
+    """
+    df = citas_manana()
+    res = {"total": int(len(df)), "enviados": 0, "fallidos": 0, "detalles": []}
+    if df.empty:
+        return res
+
+    for _, r in df.iterrows():
+        nombre = (r.get("nombre") or "").strip()
+        tel_raw = (r.get("telefono") or "").strip()
+        to = _to_e164_mx(tel_raw)
+        fecha_txt = _fmt_fecha_es(r["fecha"])
+        hora_txt  = _fmt_hora_es(r["hora"])
+
+        item = {
+            "id_cita": int(r["id_cita"]),
+            "nombre": nombre,
+            "telefono": tel_raw,
+            "to_e164": to or "",
+            "fecha": fecha_txt,
+            "hora": hora_txt,
+            "ok": False,
+            "error": "",
+        }
+
+        if not to:
+            item["error"] = "Teléfono inválido/no E.164"
+            res["fallidos"] += 1
+            res["detalles"].append(item)
+            continue
+
+        try:
+            if not dry_run:
+                _wa_send_meta(to, nombre, fecha_txt, hora_txt)
+            item["ok"] = True
+            res["enviados"] += 1
+        except Exception as e:
+            item["error"] = str(e)
+            res["fallidos"] += 1
+
+        res["detalles"].append(item)
+
+    return res

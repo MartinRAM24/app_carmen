@@ -193,6 +193,29 @@ with colr:
                 except Exception as e:
                     st.error(f"No se pudo eliminar: {e}")
 
+        # --------- RECORDATORIOS WHATSAPP (CITAS DE MAÑANA) ----------
+    from modules.core import enviar_recordatorios_manana
+
+    st.divider()
+    st.subheader("🔔 Recordatorios de WhatsApp (citas de mañana)")
+
+    colA, colB = st.columns([1, 3])
+    with colA:
+        dry = st.checkbox("Modo simulación (no envía)", value=True)
+
+    if st.button("📨 Enviar recordatorios de mañana"):
+        try:
+            res = enviar_recordatorios_manana(dry_run=dry)
+            if res["total"] == 0:
+                st.info("No hay citas para mañana.")
+            else:
+                st.success(f"Procesadas: {res['total']} • Enviados: {res['enviados']} • Fallidos: {res['fallidos']}")
+                st.dataframe(pd.DataFrame(res["detalles"]), use_container_width=True, hide_index=True)
+        except KeyError:
+            st.error("Faltan credenciales de WhatsApp en Secrets.")
+        except Exception as e:
+            st.error(f"No se pudieron enviar los recordatorios: {e}")
+
 st.divider()
 
 # Atajos opcionales a otras páginas (si quieres; o confía en el sidebar)
