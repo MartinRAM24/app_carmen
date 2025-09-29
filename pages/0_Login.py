@@ -130,7 +130,7 @@ with tab_coach:
     with st.form("form_admin_login", clear_on_submit=False):
         a_user = st.text_input("Usuario", value="carmen", disabled=True, key="admin_user")
         a_pass = st.text_input("Contraseña", type="password", key="admin_pass")
-        enviar_admin = st.form_submit_button("Entrar como Coach", use_container_width=True)
+        enviar_admin = st.form_submit_button("Entrar como Coach")
     if enviar_admin:
         if is_admin_ok(a_user, a_pass):
             st.session_state.role = "admin"
