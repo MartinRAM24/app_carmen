@@ -17,14 +17,38 @@ import unicodedata
 from pathlib import Path
 from googleapiclient.errors import HttpError
 
-# --------- Secrets / env ---------
-NEON_URL = st.secrets.get("NEON_DATABASE_URL") or os.getenv("NEON_DATABASE_URL")
-PEPPER = (st.secrets.get("PASSWORD_PEPPER") or os.getenv("PASSWORD_PEPPER") or "").encode()
+NEON_URL = os.getenv("NEON_DATABASE_URL") or st.secrets.get("NEON_DATABASE_URL")
+PEPPER = (os.getenv("PASSWORD_PEPPER") or st.secrets.get("PASSWORD_PEPPER") or "").encode()
+
+# Google Drive
 SCOPES = ["https://www.googleapis.com/auth/drive"]
 ROOT_FOLDER_ID = os.getenv("DRIVE_ROOT_FOLDER_ID") or st.secrets.get("DRIVE_ROOT_FOLDER_ID")
-# Admin (texto plano en secrets/env)
+
+# Admin
 ADMIN_USER = os.getenv("CARMEN_USER") or st.secrets.get("CARMEN_USER", "carmen")
 ADMIN_PASSWORD = os.getenv("CARMEN_PASSWORD") or st.secrets.get("CARMEN_PASSWORD")
+
+# --- Credenciales Google (dos rutas) ---
+# A) OAuth (si usas OAuth de usuario)
+GOOGLE_CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID")     or (st.secrets.get("google_oauth", {}) or {}).get("client_id")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET") or (st.secrets.get("google_oauth", {}) or {}).get("client_secret")
+GOOGLE_REFRESH_TOKEN = os.getenv("GOOGLE_REFRESH_TOKEN") or (st.secrets.get("google_oauth", {}) or {}).get("refresh_token")
+GOOGLE_TOKEN_URI     = os.getenv("GOOGLE_TOKEN_URI")     or (st.secrets.get("google_oauth", {}) or {}).get("token_uri") or "https://oauth2.googleapis.com/token"
+
+# B) Service Account (recomendado en Drive compartido)
+GCP_TYPE          = os.getenv("GCP_TYPE") or (st.secrets.get("gcp_service_account", {}) or {}).get("type", "service_account")
+GCP_PROJECT_ID    = os.getenv("GCP_PROJECT_ID") or (st.secrets.get("gcp_service_account", {}) or {}).get("project_id")
+GCP_PRIVATE_KEY_ID= os.getenv("GCP_PRIVATE_KEY_ID") or (st.secrets.get("gcp_service_account", {}) or {}).get("private_key_id")
+GCP_PRIVATE_KEY   = os.getenv("GCP_PRIVATE_KEY") or (st.secrets.get("gcp_service_account", {}) or {}).get("private_key", "")
+GCP_CLIENT_EMAIL  = os.getenv("GCP_CLIENT_EMAIL") or (st.secrets.get("gcp_service_account", {}) or {}).get("client_email")
+GCP_CLIENT_ID     = os.getenv("GCP_CLIENT_ID") or (st.secrets.get("gcp_service_account", {}) or {}).get("client_id")
+GCP_TOKEN_URI     = os.getenv("GCP_TOKEN_URI") or (st.secrets.get("gcp_service_account", {}) or {}).get("token_uri") or "https://oauth2.googleapis.com/token"
+
+# WhatsApp (Meta Cloud API)
+WHATSAPP_PHONE_ID = os.getenv("WHATSAPP_PHONE_ID") or (st.secrets.get("whatsapp", {}) or {}).get("PHONE_NUMBER_ID")
+WHATSAPP_TOKEN    = os.getenv("WHATSAPP_TOKEN")    or (st.secrets.get("whatsapp", {}) or {}).get("TOKEN")
+WHATSAPP_TEMPLATE = os.getenv("WHATSAPP_TEMPLATE") or (st.secrets.get("whatsapp", {}) or {}).get("TEMPLATE")
+WHATSAPP_LANG     = os.getenv("WHATSAPP_LANG")     or (st.secrets.get("whatsapp", {}) or {}).get("LANG", "es_MX")
 
 # Agenda
 PASO_MIN: int = 30
@@ -295,23 +319,68 @@ def login_paciente(telefono: str, password: str) -> Optional[dict]:
 
 # --------- DRIVE HELPERS ---------
 @st.cache_resource
+# --------- DRIVE HELPERS ---------
+from google.oauth2.credentials import Credentials
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+import urllib.parse
+
+@st.cache_resource
 def get_drive():
-    # 1) OAuth (si configuras google_oauth en secrets)
+    # 1) Intentar OAuth de usuario (si hay variables)
+    if GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET and GOOGLE_REFRESH_TOKEN:
+        creds = Credentials(
+            token=None,
+            refresh_token=GOOGLE_REFRESH_TOKEN,
+            token_uri=GOOGLE_TOKEN_URI,
+            client_id=GOOGLE_CLIENT_ID,
+            client_secret=GOOGLE_CLIENT_SECRET,
+            scopes=SCOPES,
+        )
+        return build("drive", "v3", credentials=creds)
+
+    # 2) Intentar Service Account (Railway env o secrets)
+    if GCP_CLIENT_EMAIL and (GCP_PRIVATE_KEY or "").strip():
+        info = {
+            "type": GCP_TYPE or "service_account",
+            "project_id": GCP_PROJECT_ID,
+            "private_key_id": GCP_PRIVATE_KEY_ID,
+            # en Railway el private key suele venir con \n escapadas → convertir a saltos reales
+            "private_key": (GCP_PRIVATE_KEY or "").replace("\\n", "\n"),
+            "client_email": GCP_CLIENT_EMAIL,
+            "client_id": GCP_CLIENT_ID,
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": GCP_TOKEN_URI or "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+            "client_x509_cert_url": f"https://www.googleapis.com/robot/v1/metadata/x509/{urllib.parse.quote(GCP_CLIENT_EMAIL or '')}",
+        }
+        creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
+        return build("drive", "v3", credentials=creds)
+
+    # 3) Fallback: estructuras antiguas en secrets (compatibilidad)
     if "google_oauth" in st.secrets:
         i = st.secrets["google_oauth"]
         creds = Credentials(
             token=None,
-            refresh_token=i["refresh_token"],
-            token_uri="https://oauth2.googleapis.com/token",
-            client_id=i["client_id"],
-            client_secret=i["client_secret"],
+            refresh_token=i.get("refresh_token"),
+            token_uri=i.get("token_uri", "https://oauth2.googleapis.com/token"),
+            client_id=i.get("client_id"),
+            client_secret=i.get("client_secret"),
             scopes=SCOPES,
         )
         return build("drive", "v3", credentials=creds)
-    # 2) Service Account (recomendado en Unidad Compartida)
-    i = dict(st.secrets["gcp_service_account"])  # type: ignore
-    creds = service_account.Credentials.from_service_account_info(i, scopes=SCOPES)
-    return build("drive", "v3", credentials=creds)
+
+    if "gcp_service_account" in st.secrets:
+        i = dict(st.secrets["gcp_service_account"])  # type: ignore
+        # por si el private_key en secrets también viene con \n escapados
+        if "private_key" in i and isinstance(i["private_key"], str):
+            i["private_key"] = i["private_key"].replace("\\n", "\n")
+        creds = service_account.Credentials.from_service_account_info(i, scopes=SCOPES)
+        return build("drive", "v3", credentials=creds)
+
+    st.error("No hay credenciales de Google configuradas (OAuth o Service Account).")
+    st.stop()
 
 def make_anyone_reader(file_id: str):
     try:
@@ -794,11 +863,13 @@ def _to_e164_mx(tel: str) -> str | None:
     return None
 
 def _wa_send_meta(to_e164: str, nombre: str, fecha_txt: str, hora_txt: str):
-    """Envía mensaje por plantilla (WhatsApp Cloud API / Meta)."""
-    cfg = st.secrets["whatsapp"]
-    url = f"https://graph.facebook.com/v19.0/{cfg['PHONE_NUMBER_ID']}/messages"
+    """Envía mensaje por plantilla (WhatsApp Cloud API / Meta) usando variables de Railway."""
+    if not (WHATSAPP_PHONE_ID and WHATSAPP_TOKEN and WHATSAPP_TEMPLATE):
+        raise RuntimeError("Faltan variables de WhatsApp (WHATSAPP_PHONE_ID / WHATSAPP_TOKEN / WHATSAPP_TEMPLATE).")
+
+    url = f"https://graph.facebook.com/v19.0/{WHATSAPP_PHONE_ID}/messages"
     headers = {
-        "Authorization": f"Bearer {cfg['TOKEN']}",
+        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
         "Content-Type": "application/json",
     }
     payload = {
@@ -806,8 +877,8 @@ def _wa_send_meta(to_e164: str, nombre: str, fecha_txt: str, hora_txt: str):
         "to": to_e164,
         "type": "template",
         "template": {
-            "name": cfg["TEMPLATE"],
-            "language": {"code": cfg.get("LANG", "es_MX")},
+            "name": WHATSAPP_TEMPLATE,
+            "language": {"code": WHATSAPP_LANG or "es_MX"},
             "components": [
                 {"type": "body", "parameters": [
                     {"type": "text", "text": nombre or "Paciente"},
@@ -820,6 +891,7 @@ def _wa_send_meta(to_e164: str, nombre: str, fecha_txt: str, hora_txt: str):
     r = requests.post(url, headers=headers, json=payload, timeout=15)
     r.raise_for_status()
     return r.json()
+
 
 def enviar_recordatorios_manana(dry_run: bool = False) -> dict:
     """
