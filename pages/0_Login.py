@@ -101,12 +101,12 @@ h1, h2, h3, h4 { color: #111827; }
 
 st.markdown(f"<style>{CUSTOM_CSS}</style>", unsafe_allow_html=True)
 
-def get_base64_of_bin_file(bin_file):
-    with open(bin_file, "rb") as f:
-        data = f.read()
-    return base64.b64encode(data).decode()
+@st.cache_data
+def load_b64(path: str) -> str:
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode()
 
-logo_base64 = get_base64_of_bin_file("assets/Logo.png")
+logo_base64 = load_b64("assets/Logo.png")
 
 st.markdown(
     f"""
@@ -194,9 +194,9 @@ with tab_pac:
                 except Exception as e:
                     st.error(f"No se pudo registrar: {e}")
 
-    ig_b64 = get_base64_of_bin_file("assets/ig.png")
-    ttk_b64 = get_base64_of_bin_file("assets/tiktok.png")
-    wa_b64 = get_base64_of_bin_file("assets/wa.png")
+    ig_b64 = load_b64("assets/ig.png")
+    ttk_b64 = load_b64("assets/tiktok.png")
+    wa_b64 = load_b64("assets/wa.png")
 
     # Links
     IG_URL = "https://www.instagram.com/carmen._ochoa?igsh=dnd2aGt5a25xYTg0"
