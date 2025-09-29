@@ -384,60 +384,27 @@ def _escape_for_q(s: str) -> str:
     # Escapa comillas simples para la query de Drive
     return s.replace("'", "\\'")
 
-def _purge_drive_files_with_prefix(parent_id: str, name_prefix: str, send_to_trash: bool = True) -> None:
-    """
-    Mueve a papelera (o elimina) todos los archivos dentro de `parent_id`
-    cuyo nombre empieza con `name_prefix`.
-    """
+def _purge_drive_files_with_prefix(parent_id: str, name_prefix: str) -> int:
+    """Mueve a papelera todos los archivos en `parent_id` cuyo nombre empiece con `name_prefix`."""
     try:
         drv = get_drive()
-
-        # Para reducir resultados: buscamos por "contains" y luego filtramos por prefix en Python
-        q = (
-            f"'{_escape_for_q(parent_id)}' in parents and "
-            f"trashed=false and "
-            f"name contains '{_escape_for_q(name_prefix)}'"
-        )
-
-        page_token = None
-        to_purge = []
-        while True:
-            resp = drv.files().list(
-                q=q,
-                fields="nextPageToken, files(id, name)",
-                pageSize=1000,
-                pageToken=page_token,
-                supportsAllDrives=True,
-                includeItemsFromAllDrives=True,
-            ).execute()
-            files = resp.get("files", [])
-            # Filtra solo los que empiezan exactamente con el prefijo
-            to_purge.extend([f for f in files if f.get("name","").startswith(name_prefix)])
-            page_token = resp.get("nextPageToken")
-            if not page_token:
-                break
-
-        for f in to_purge:
-            try:
-                if send_to_trash:
-                    drv.files().update(
-                        fileId=f["id"],
-                        body={"trashed": True},
-                        supportsAllDrives=True
-                    ).execute()
-                else:
-                    drv.files().delete(
-                        fileId=f["id"],
-                        supportsAllDrives=True
-                    ).execute()
-            except HttpError as e:
-                st.info(f"[Drive] No se pudo eliminar {f.get('name')}: {e}")
-
-    except Exception as e:
-        st.info(f"[Drive] Error purgando prefijo '{name_prefix}': {e}")
-
-    except Exception as e:
-        st.info(f"[Drive] No se pudo depurar '{name_prefix}*': {e}")
+        safe = name_prefix.replace("'", "\\'")
+        q = f"'{parent_id}' in parents and trashed=false and name contains '{safe}'"
+        resp = drv.files().list(
+            q=q, fields="files(id,name)", pageSize=1000,
+            supportsAllDrives=True, includeItemsFromAllDrives=True
+        ).execute()
+        n = 0
+        for f in resp.get("files", []):
+            if f.get("name","").startswith(name_prefix):
+                drv.files().update(
+                    fileId=f["id"], body={"trashed": True},
+                    supportsAllDrives=True
+                ).execute()
+                n += 1
+        return n
+    except Exception:
+        return 0
 
 def upload_pdf_named(pid: int, fecha_str: str, kind: str, file_bytes: bytes) -> dict:
     kind = _slug(kind or "pdf")
@@ -456,6 +423,30 @@ def upload_image_named(pid: int, fecha_str: str, base_name: str, file_bytes: byt
     ext = Path(base_name).suffix.lower() or ".jpg"
     target = f"{fecha_str}_{slug}{ext}"
     return upload_image_to_folder(file_bytes, target, folder_id, mime)
+
+def _escape_for_q(s: str) -> str:
+    return s.replace("'", "\\'")
+
+
+def _siguiente_indice_foto(parent_id: str, fecha_prefix: str) -> int:
+    """
+    Busca el siguiente índice disponible para nombres tipo `YYYY-MM-DD_foto_XX.ext`.
+    """
+    drv = get_drive()
+    safe = fecha_prefix.replace("'", "\\'")
+    q = f"'{parent_id}' in parents and trashed=false and name contains '{safe}_foto_'"
+    resp = drv.files().list(
+        q=q, fields="files(name)", pageSize=1000,
+        supportsAllDrives=True, includeItemsFromAllDrives=True
+    ).execute()
+    max_idx = 0
+    for f in resp.get("files", []):
+        name = f.get("name","")
+        # buscar patrón ..._foto_XX
+        m = re.search(r"_foto_(\d+)", name)
+        if m:
+            max_idx = max(max_idx, int(m.group(1)))
+    return max_idx + 1
 
 
 

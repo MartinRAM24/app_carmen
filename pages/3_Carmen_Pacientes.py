@@ -207,31 +207,52 @@ with tab_pdfs:
 
     with c1:
         up_rutina = st.file_uploader("Rutina (PDF)", type=["pdf"], key=f"up_rutina_{pid}")
-        if up_rutina and st.button("⬆️ Subir Rutina", key=f"btn_rutina_{pid}"):
+        # --- Subir Rutina ---
+        if up_rutina and st.button("⬆️ Subir Rutina"):
             try:
-                pdf = upload_pdf_named(pid, fecha_pdf.strip(), "rutina", up_rutina.read())
+                cita_folder = ensure_cita_folder(pid, fecha_pdf.strip())
+
+                # (opcional) borrar anteriores con ese prefijo
+                _purge_drive_files_with_prefix(cita_folder, f"{fecha_pdf.strip()}_rutina")
+
+                ext = Path(up_rutina.name).suffix or ".pdf"
+                target = f"{fecha_pdf.strip()}_rutina{ext}"
+
+                pdf = upload_pdf_to_folder(up_rutina.read(), target, cita_folder)  # <= sigue usando tu función
                 upsert_medicion(pid, fecha_pdf.strip(), rutina_pdf=pdf["webViewLink"], plan_pdf=None)
 
+                # (opcional) cuota, como ya lo hacías:
                 pf = df_sql("SELECT drive_folder_id FROM pacientes WHERE id=%s", (pid,))
                 if not pf.empty and (pf.loc[0, "drive_folder_id"] or "").strip():
                     enforce_patient_pdf_quota(pf.loc[0, "drive_folder_id"].strip(), keep=10, send_to_trash=True)
 
-                st.success("Rutina subida y enlazada ✅"); st.rerun()
+                st.success("Rutina subida y enlazada ✅");
+                st.rerun()
             except Exception as e:
                 st.error(f"No se pudo subir: {e}")
 
     with c2:
         up_plan = st.file_uploader("Plan (PDF)", type=["pdf"], key=f"up_plan_{pid}")
-        if up_plan and st.button("⬆️ Subir Plan", key=f"btn_plan_{pid}"):
+        # --- Subir Plan ---
+        if up_plan and st.button("⬆️ Subir Plan"):
             try:
-                pdf = upload_pdf_named(pid, fecha_pdf.strip(), "plan", up_plan.read())
+                cita_folder = ensure_cita_folder(pid, fecha_pdf.strip())
+
+                # (opcional) borrar anteriores con ese prefijo
+                _purge_drive_files_with_prefix(cita_folder, f"{fecha_pdf.strip()}_plan")
+
+                ext = Path(up_plan.name).suffix or ".pdf"
+                target = f"{fecha_pdf.strip()}_plan{ext}"
+
+                pdf = upload_pdf_to_folder(up_plan.read(), target, cita_folder)  # <= sigue usando tu función
                 upsert_medicion(pid, fecha_pdf.strip(), rutina_pdf=None, plan_pdf=pdf["webViewLink"])
 
                 pf = df_sql("SELECT drive_folder_id FROM pacientes WHERE id=%s", (pid,))
                 if not pf.empty and (pf.loc[0, "drive_folder_id"] or "").strip():
                     enforce_patient_pdf_quota(pf.loc[0, "drive_folder_id"].strip(), keep=10, send_to_trash=True)
 
-                st.success("Plan subido y enlazado ✅"); st.rerun()
+                st.success("Plan subido y enlazado ✅");
+                st.rerun()
             except Exception as e:
                 st.error(f"No se pudo subir: {e}")
 
@@ -265,18 +286,39 @@ with tab_fotos:
                 st.warning("Selecciona al menos una imagen.")
             else:
                 folder_id = ensure_cita_folder(pid, fecha_f.strip())
-                drv = get_drive()
+
+                try:
+                    idx = _siguiente_indice_foto(folder_id, fecha_f.strip())
+                except Exception:
+                    idx = 1
+
+                ok, fails = 0, 0
                 for fimg in up_imgs:
-                    ext = Path(fimg.name).suffix or ".jpg"
-                    mime = fimg.type or "image/jpeg"
-                    target_name = f"{fecha_f.strip()}_{Path(fimg.name).stem}{ext}"
-                    f = upload_image_to_folder(fimg.read(), target_name, folder_id, mime)
-                    exec_sql("""
-                        INSERT INTO fotos (paciente_id, fecha, drive_file_id, web_view_link, filename)
-                        VALUES (%s, %s, %s, %s, %s)
-                    """, (pid, fecha_f.strip(), f["id"], f.get("webViewLink",""), target_name))
+                    try:
+                        ext = Path(fimg.name).suffix.lower() or ".jpg"
+                        if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
+                            ext = ".jpg"
+                        mime = fimg.type or "image/jpeg"
+
+                        target_name = f"{fecha_f.strip()}_foto_{idx:02d}{ext}"
+                        idx += 1
+
+                        # <= SIGUE usando tu función
+                        f = upload_image_to_folder(fimg.read(), target_name, folder_id, mime)
+
+                        exec_sql("""
+                                 INSERT INTO fotos (paciente_id, fecha, drive_file_id, web_view_link, filename)
+                                 VALUES (%s, %s, %s, %s, %s)
+                                 """, (pid, fecha_f.strip(), f["id"], f.get("webViewLink", ""), target_name))
+                        ok += 1
+                    except Exception as e:
+                        fails += 1
+                        st.info(f"Error subiendo {getattr(fimg, 'name', 'foto')}: {e}")
+
                 asociar_medicion_a_cita(pid, fecha_f.strip())
-                st.success("Fotos subidas ✅"); st.rerun()
+                if ok: st.success(f"Fotos subidas: {ok} ✅")
+                if fails: st.warning(f"Fallaron: {fails}")
+                st.rerun()
 
     gal = df_sql("SELECT id, fecha, drive_file_id FROM fotos WHERE paciente_id=%s ORDER BY fecha DESC", (pid,))
     if gal.empty:
