@@ -21,8 +21,7 @@ from googleapiclient.errors import HttpError
 NEON_URL = st.secrets.get("NEON_DATABASE_URL") or os.getenv("NEON_DATABASE_URL")
 PEPPER = (st.secrets.get("PASSWORD_PEPPER") or os.getenv("PASSWORD_PEPPER") or "").encode()
 SCOPES = ["https://www.googleapis.com/auth/drive"]
-ROOT_FOLDER_ID = st.secrets.get("DRIVE_ROOT_FOLDER_ID")
-
+ROOT_FOLDER_ID = os.getenv("DRIVE_ROOT_FOLDER_ID") or st.secrets.get("DRIVE_ROOT_FOLDER_ID")
 # Admin (texto plano en secrets/env)
 ADMIN_USER = os.getenv("CARMEN_USER") or st.secrets.get("CARMEN_USER", "carmen")
 ADMIN_PASSWORD = os.getenv("CARMEN_PASSWORD") or st.secrets.get("CARMEN_PASSWORD")
