@@ -2,6 +2,7 @@
 import streamlit as st
 from modules.core import is_admin_ok, login_paciente, registrar_paciente, normalize_tel
 import base64
+from urllib.parse import quote_plus
 
 CUSTOM_CSS = """
 /* Sidebar */
@@ -121,7 +122,7 @@ st.markdown(
 st.session_state.setdefault("role", None)
 st.session_state.setdefault("paciente", None)
 
-tab_coach, tab_pac = st.tabs(["👩‍⚕️ Coach", "🧑 Paciente"])
+tab_coach, tab_pac, tab_social= st.tabs(["👩‍⚕️ Coach", "🧑 Paciente", "📣 Redes"])
 
 # ===== Coach =====
 with tab_coach:
