@@ -31,17 +31,52 @@ BLOQUEO_DIAS_MIN: int = 2  # hoy y mañana bloqueados (paciente agenda desde el 
 
 # --------- CONEXIÓN + DB ---------
 @st.cache_resource
-def conn():
+def _connect():
     if not NEON_URL:
         st.error("Falta NEON_DATABASE_URL en Secrets."); st.stop()
-    return psycopg.connect(NEON_URL, autocommit=True)
+    # keepalives para conexiones serverless (Neon)
+    return psycopg.connect(
+        NEON_URL,
+        autocommit=True,
+        connect_timeout=10,
+        keepalives=1,
+        keepalives_idle=30,
+        keepalives_interval=10,
+        keepalives_count=5,
+    )
+
+def conn():
+    """Devuelve una conexión viva; si está cerrada o sin uso, reconecta."""
+    c = _connect()
+    try:
+        # psycopg3: atributo .closed puede existir; además ping simple
+        if getattr(c, "closed", False):
+            raise psycopg.OperationalError("closed")
+        with c.cursor() as cur:
+            cur.execute("SELECT 1")
+            cur.fetchone()
+    except Exception:
+        # si falló, limpiamos el recurso cacheado y reconectamos
+        try:
+            st.cache_resource.clear()
+        except Exception:
+            pass
+        c = _connect()
+    return c
 
 def exec_sql(q_ps: str, p: tuple = ()):
     with conn().cursor() as cur:
         cur.execute(q_ps, p)
+    # invalidar caché de lecturas para que se vea el cambio
+    try:
+        st.cache_data.clear()
+    except Exception:
+        pass
 
 def df_sql(q_ps: str, p: tuple = ()):
-    return pd.read_sql_query(q_ps, conn(), params=p)
+    # usar conn() cada vez para evitar objetos conexión zombis en pandas
+    with conn() as c:
+        return pd.read_sql_query(q_ps, c, params=p)
 
 def setup_db():
     # pacientes (SIN token)
