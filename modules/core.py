@@ -16,39 +16,61 @@ import bcrypt
 import unicodedata
 from pathlib import Path
 from googleapiclient.errors import HttpError
+# --- lector seguro de config (env primero, secrets opcional) ---
+import os, streamlit as st
 
-NEON_URL = os.getenv("NEON_DATABASE_URL") or st.secrets.get("NEON_DATABASE_URL")
-PEPPER = (os.getenv("PASSWORD_PEPPER") or st.secrets.get("PASSWORD_PEPPER") or "").encode()
+def _safe_secrets_dict():
+    try:
+        return dict(st.secrets)   # puede explotar si no hay secrets.toml
+    except Exception:
+        return {}
 
-# Google Drive
+_SECRETS = _safe_secrets_dict()
+
+def get_conf(key, default=None, alias=None):
+    """
+    Lee primero de variables de entorno (Railway).
+    Si no existe, intenta en st.secrets (si está disponible).
+    alias: nombre alterno dentro de secrets (por ejemplo mayúsculas/minúsculas o claves anidadas).
+    """
+    v = os.getenv(key)
+    if v not in (None, ""):
+        return v
+    return _SECRETS.get(alias or key, default)
+
+
+
+# --------- Secrets / env (Railway-first, sin crashear) ---------
+NEON_URL = get_conf("NEON_DATABASE_URL")
+PEPPER = (get_conf("PASSWORD_PEPPER", "") or "").encode()
+
 SCOPES = ["https://www.googleapis.com/auth/drive"]
-ROOT_FOLDER_ID = os.getenv("DRIVE_ROOT_FOLDER_ID") or st.secrets.get("DRIVE_ROOT_FOLDER_ID")
+ROOT_FOLDER_ID = get_conf("DRIVE_ROOT_FOLDER_ID")
 
-# Admin
-ADMIN_USER = os.getenv("CARMEN_USER") or st.secrets.get("CARMEN_USER", "carmen")
-ADMIN_PASSWORD = os.getenv("CARMEN_PASSWORD") or st.secrets.get("CARMEN_PASSWORD")
+ADMIN_USER = get_conf("CARMEN_USER", "carmen")
+ADMIN_PASSWORD = get_conf("CARMEN_PASSWORD")
 
-# --- Credenciales Google (dos rutas) ---
-# A) OAuth (si usas OAuth de usuario)
-GOOGLE_CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID")     or (st.secrets.get("google_oauth", {}) or {}).get("client_id")
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET") or (st.secrets.get("google_oauth", {}) or {}).get("client_secret")
-GOOGLE_REFRESH_TOKEN = os.getenv("GOOGLE_REFRESH_TOKEN") or (st.secrets.get("google_oauth", {}) or {}).get("refresh_token")
-GOOGLE_TOKEN_URI     = os.getenv("GOOGLE_TOKEN_URI")     or (st.secrets.get("google_oauth", {}) or {}).get("token_uri") or "https://oauth2.googleapis.com/token"
+# --- OAuth Google (si usas OAuth) ---
+GOOGLE_CLIENT_ID     = get_conf("GOOGLE_CLIENT_ID",     alias="google_oauth.client_id")
+GOOGLE_CLIENT_SECRET = get_conf("GOOGLE_CLIENT_SECRET", alias="google_oauth.client_secret")
+GOOGLE_REFRESH_TOKEN = get_conf("GOOGLE_REFRESH_TOKEN", alias="google_oauth.refresh_token")
+GOOGLE_TOKEN_URI     = get_conf("GOOGLE_TOKEN_URI",     "https://oauth2.googleapis.com/token")
 
-# B) Service Account (recomendado en Drive compartido)
-GCP_TYPE          = os.getenv("GCP_TYPE") or (st.secrets.get("gcp_service_account", {}) or {}).get("type", "service_account")
-GCP_PROJECT_ID    = os.getenv("GCP_PROJECT_ID") or (st.secrets.get("gcp_service_account", {}) or {}).get("project_id")
-GCP_PRIVATE_KEY_ID= os.getenv("GCP_PRIVATE_KEY_ID") or (st.secrets.get("gcp_service_account", {}) or {}).get("private_key_id")
-GCP_PRIVATE_KEY   = os.getenv("GCP_PRIVATE_KEY") or (st.secrets.get("gcp_service_account", {}) or {}).get("private_key", "")
-GCP_CLIENT_EMAIL  = os.getenv("GCP_CLIENT_EMAIL") or (st.secrets.get("gcp_service_account", {}) or {}).get("client_email")
-GCP_CLIENT_ID     = os.getenv("GCP_CLIENT_ID") or (st.secrets.get("gcp_service_account", {}) or {}).get("client_id")
-GCP_TOKEN_URI     = os.getenv("GCP_TOKEN_URI") or (st.secrets.get("gcp_service_account", {}) or {}).get("token_uri") or "https://oauth2.googleapis.com/token"
+# --- Service Account Google ---
+GCP_TYPE            = get_conf("GCP_TYPE", "service_account", alias="gcp_service_account.type")
+GCP_PROJECT_ID      = get_conf("GCP_PROJECT_ID",         alias="gcp_service_account.project_id")
+GCP_PRIVATE_KEY_ID  = get_conf("GCP_PRIVATE_KEY_ID",     alias="gcp_service_account.private_key_id")
+GCP_PRIVATE_KEY     = (get_conf("GCP_PRIVATE_KEY",       alias="gcp_service_account.private_key") or "").replace("\\n","\n")
+GCP_CLIENT_EMAIL    = get_conf("GCP_CLIENT_EMAIL",       alias="gcp_service_account.client_email")
+GCP_CLIENT_ID       = get_conf("GCP_CLIENT_ID",          alias="gcp_service_account.client_id")
+GCP_TOKEN_URI       = get_conf("GCP_TOKEN_URI", "https://oauth2.googleapis.com/token")
 
-# WhatsApp (Meta Cloud API)
-WHATSAPP_PHONE_ID = os.getenv("WHATSAPP_PHONE_ID") or (st.secrets.get("whatsapp", {}) or {}).get("PHONE_NUMBER_ID")
-WHATSAPP_TOKEN    = os.getenv("WHATSAPP_TOKEN")    or (st.secrets.get("whatsapp", {}) or {}).get("TOKEN")
-WHATSAPP_TEMPLATE = os.getenv("WHATSAPP_TEMPLATE") or (st.secrets.get("whatsapp", {}) or {}).get("TEMPLATE")
-WHATSAPP_LANG     = os.getenv("WHATSAPP_LANG")     or (st.secrets.get("whatsapp", {}) or {}).get("LANG", "es_MX")
+# --- WhatsApp (Meta Cloud) ---
+WHATSAPP_PHONE_ID = get_conf("WHATSAPP_PHONE_ID",  alias="whatsapp.PHONE_NUMBER_ID")
+WHATSAPP_TOKEN    = get_conf("WHATSAPP_TOKEN",     alias="whatsapp.TOKEN")
+WHATSAPP_TEMPLATE = get_conf("WHATSAPP_TEMPLATE",  alias="whatsapp.TEMPLATE")
+WHATSAPP_LANG     = get_conf("WHATSAPP_LANG", "es_MX", alias="whatsapp.LANG")
+
 
 # Agenda
 PASO_MIN: int = 30
