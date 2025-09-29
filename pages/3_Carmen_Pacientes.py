@@ -6,11 +6,12 @@ from modules.core import (
     df_sql, exec_sql, upsert_medicion, asociar_medicion_a_cita,
     upload_pdf_to_folder, upload_image_to_folder, enforce_patient_pdf_quota,
     get_drive, ensure_cita_folder, drive_image_view_url, drive_image_download_url,
-    delete_foto, delete_medicion_dia,
-    upsert_paciente,             # <- IMPORTANTE
+    delete_foto, delete_medicion_dia,             # <- IMPORTANTE
 )
 import pandas as pd
-from modules.core import registrar_paciente_admin  # ← importa arriba del archivo
+import re
+from modules.core import registrar_paciente_admin
+import random
 
 st.set_page_config(page_title="Carmen — Pacientes", page_icon="🧾", layout="wide")
 
@@ -116,33 +117,60 @@ if st.session_state.get("role") != "admin":
 
 st.title("📚 Gestión de Pacientes")
 
-# --- Botón + modal para registrar paciente ---
-if st.button("➕ Registrar paciente (con contraseña de 6 dígitos)"):
-    @st.dialog("Registrar nuevo paciente")
-    def _dlg_nuevo_paciente():
-        with st.form("form_new_paciente_admin", clear_on_submit=False):
-            nombre_n = st.text_input("Nombre completo")
-            tel_n    = st.text_input("Teléfono (10 dígitos MX, sin signos)")
-            pw6      = st.text_input("Contraseña (6 dígitos)", type="password", max_chars=6, help="Exactamente 6 dígitos")
-            ok_reg   = st.form_submit_button("Crear")
+# ===== Alta rápida de paciente (modal) =====
+colL, colR = st.columns([1, 5])
+with colL:
+    if st.button("➕ Nuevo paciente", use_container_width=True):
+        @st.dialog("Registrar nuevo paciente")
+        def _dlg_nuevo_paciente():
+            with st.form("form_nuevo_paciente", clear_on_submit=False):
+                nombre_np = st.text_input("Nombre completo *")
+                tel_np    = st.text_input("Teléfono *", help="10 dígitos MX o como lo uses normalmente")
+                fecha_np  = st.text_input("Fecha de nacimiento (YYYY-MM-DD) — opcional", placeholder="1995-06-25")
+                correo_np = st.text_input("Correo — opcional")
+                c1, c2 = st.columns([2,1])
+                with c1:
+                    pw_np = st.text_input("Contraseña (6 dígitos) *", type="password", max_chars=6,
+                                          help="Se la puedes compartir al paciente; luego podrá cambiarla.")
+                with c2:
+                    def _gen_pwd():
+                        return f"{random.randint(0, 999999):06d}"
+                    if st.form_submit_button("🎲 Generar"):
+                        st.session_state["_tmp_pw_np"] = _gen_pwd()
+                # si generamos, rellenamos el campo
+                if "_tmp_pw_np" in st.session_state and not pw_np:
+                    pw_np = st.session_state["_tmp_pw_np"]
 
-        if ok_reg:
-            try:
-                if not (nombre_n.strip() and tel_n.strip() and pw6):
-                    st.error("Completa todos los campos."); return
-                if not re.fullmatch(r"\d{10,15}", re.sub(r"\D+", "", tel_n)):
-                    st.error("Teléfono inválido. Ingresa solo dígitos (10–15)."); return
-                if not re.fullmatch(r"\d{6}", pw6):
-                    st.error("La contraseña debe ser exactamente 6 dígitos."); return
+                crear = st.form_submit_button("Crear paciente")
 
-                pid = registrar_paciente_admin(nombre_n, tel_n, pw6)
-                st.success(f"Paciente creado/actualizado ✅ (ID {pid}).")
-                st.info(f"Contraseña asignada: {pw6}")
-                st.rerun()
-            except Exception as e:
-                st.error(f"No se pudo registrar: {e}")
+            if crear:
+                if not (nombre_np.strip() and tel_np.strip() and pw_np):
+                    st.error("Completa nombre, teléfono y contraseña (6 dígitos)."); return
+                if not re.fullmatch(r"\d{6}", pw_np):
+                    st.error("La contraseña debe tener exactamente 6 dígitos."); return
+                # Validación ligera de fecha/correo (opcionales)
+                if fecha_np and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", fecha_np):
+                    st.error("La fecha debe tener formato YYYY-MM-DD (o déjala en blanco)."); return
+                if correo_np and "@" not in correo_np:
+                    st.error("El correo no parece válido (o déjalo en blanco)."); return
 
-    _dlg_nuevo_paciente()
+                try:
+                    pid_new = registrar_paciente_admin(
+                        nombre=nombre_np,
+                        telefono=tel_np,
+                        password_6d=pw_np,
+                        fecha_nac=(fecha_np or None),
+                        correo=(correo_np or None),
+                    )
+                    # limpiar auxiliar
+                    st.session_state.pop("_tmp_pw_np", None)
+                    st.success(f"Paciente creado (ID {pid_new}) ✅")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"No se pudo crear: {e}")
+
+        _dlg_nuevo_paciente()
+
 
 
 # Buscar paciente

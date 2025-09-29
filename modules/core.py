@@ -130,96 +130,67 @@ def is_admin_ok(user: str, password: str) -> bool:
 def normalize_tel(t: str) -> str:
     return re.sub(r'[-\s]+', '', (t or '').strip().lower())
 
-def upsert_paciente(nombre: str,
-                    telefono: str,
-                    fecha_nac: str | None = None,
-                    correo: str | None = None,
-                    notas: str | None = None) -> dict:
-    """Crea (o actualiza por teléfono) y devuelve {"id", "nombre"}."""
-    tel_n = normalize_tel(telefono)
-    with conn().cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO pacientes (nombre, telefono, fecha_nac, correo, notas)
-            VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT (telefono)
-            DO UPDATE SET
-              nombre    = EXCLUDED.nombre,
-              fecha_nac = EXCLUDED.fecha_nac,
-              correo    = EXCLUDED.correo,
-              notas     = EXCLUDED.notas
-            RETURNING id, nombre
-            """,
-            (nombre.strip(), tel_n, fecha_nac, correo, notas),
-        )
-        pid, nom = cur.fetchone()
-
-    # (opcional) asegurar carpeta de Drive del paciente si no existe
-    try:
-        df = df_sql("SELECT drive_folder_id FROM pacientes WHERE id=%s", (pid,))
-        if df.empty or not (df.loc[0, "drive_folder_id"] or "").strip():
-            folder_id = ensure_patient_folder(nombre.strip(), int(pid))
-            exec_sql("UPDATE pacientes SET drive_folder_id=%s WHERE id=%s", (folder_id, int(pid)))
-    except Exception:
-        pass
-
-    try:
-        st.cache_data.clear()
-    except Exception:
-        pass
-
-    return {"id": int(pid), "nombre": nom}
-
-
 def _peppered(pw: str) -> bytes:
     return (pw.encode() + PEPPER) if PEPPER else pw.encode()
 
 def hash_password(pw: str) -> str:
     return bcrypt.hashpw(_peppered(pw), bcrypt.gensalt()).decode()
 
-def registrar_paciente_admin(nombre: str, telefono: str, password6: str) -> int:
+# --- Alta por Carmen (con opcionales) ---
+def registrar_paciente_admin(
+    nombre: str,
+    telefono: str,
+    password_6d: str,
+    fecha_nac: str | None = None,
+    correo: str | None = None,
+) -> int:
     """
-    Crea (o actualiza) un paciente con contraseña definida por Carmen.
-    La contraseña DEBE ser exactamente 6 dígitos.
-    Si el teléfono ya existe: actualiza nombre y password_hash.
-    Devuelve el id del paciente.
+    Registra paciente con contraseña definida por Carmen (6 dígitos) y opcionales fecha_nac/correo.
+    - Valida contraseña 6 dígitos.
+    - Crea carpeta en Drive y la enlaza.
+    - Devuelve el id del paciente.
     """
-    if not re.fullmatch(r"\d{6}", str(password6 or "")):
+    if not re.fullmatch(r"\d{6}", str(password_6d or "").strip()):
         raise ValueError("La contraseña debe ser exactamente 6 dígitos.")
 
     tel = normalize_tel(telefono)
-    pw_hash = hash_password(password6)
+    pw_hash = hash_password(password_6d)
 
     with conn().cursor() as cur:
-        # ¿Existe ya ese teléfono?
-        cur.execute("SELECT id FROM pacientes WHERE telefono=%s LIMIT 1", (tel,))
+        cur.execute(
+            """
+            INSERT INTO pacientes (nombre, telefono, password_hash, fecha_nac, correo)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (telefono) DO NOTHING
+            RETURNING id
+            """,
+            (nombre.strip(), tel, pw_hash, (fecha_nac or None), (correo or None)),
+        )
         row = cur.fetchone()
-        if row:
-            pid = int(row[0])
-            cur.execute(
-                "UPDATE pacientes SET nombre=%s, password_hash=%s WHERE id=%s",
-                (nombre.strip(), pw_hash, pid)
-            )
-        else:
-            cur.execute(
-                "INSERT INTO pacientes (nombre, telefono, password_hash) VALUES (%s, %s, %s) RETURNING id",
-                (nombre.strip(), tel, pw_hash),
-            )
-            pid = int(cur.fetchone()[0])
 
-    # (opcional) asegurar carpeta de Drive al crear/actualizar
+    if not row:
+        # Teléfono ya existe → obtenemos id
+        d = df_sql("SELECT id FROM pacientes WHERE telefono=%s LIMIT 1", (tel,))
+        if d.empty:
+            raise RuntimeError("No se pudo registrar ni encontrar el paciente.")
+        pid = int(d.iloc[0]["id"])
+    else:
+        pid = int(row[0])
+
+    # Asegurar carpeta de Drive (idempotente)
     try:
-        d = df_sql("SELECT drive_folder_id FROM pacientes WHERE id=%s", (pid,))
-        folder_id = (d.loc[0, "drive_folder_id"] or "").strip() if not d.empty else ""
-        if not folder_id:
-            folder_id = ensure_patient_folder(nombre.strip(), pid)
-            exec_sql("UPDATE pacientes SET drive_folder_id=%s WHERE id=%s", (folder_id, pid))
+        folder_id = ensure_patient_folder(nombre.strip(), pid)
+        exec_sql("UPDATE pacientes SET drive_folder_id=%s WHERE id=%s", (folder_id, pid))
+    except Exception as e:
+        st.warning(f"[Drive] No se pudo crear la carpeta del paciente: {e}")
+
+    try:
+        st.cache_data.clear()
     except Exception:
         pass
 
-    try: st.cache_data.clear()
-    except: pass
     return pid
+
 
 
 def cambiar_password_paciente(paciente_id: int, pw_actual: str, pw_nueva6: str) -> None:
