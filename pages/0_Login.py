@@ -99,13 +99,7 @@ with tab_pac:
                 except Exception as e:
                     st.error(f"No se pudo registrar: {e}")
 
-
-# ---- 📣 Redes (a la derecha)
-with tab_social:
-    if ENABLE_SOCIAL:
-        st.subheader("Conecta con Carmen")
-
-        # Base64 de iconos (si ya tienes load_b64 arriba, esto va perfecto)
+# Base64 de iconos (si ya tienes load_b64 arriba, esto va perfecto)
         ig_b64 = load_b64("assets/ig.png")
         ttk_b64 = load_b64("assets/tiktok.png")
         wa_b64 = load_b64("assets/wa.png")
@@ -119,6 +113,10 @@ with tab_social:
         WA_NUMBER = "523511974405"  # 52 + número sin signos
         WA_TEXT = "Hola Carmen, quiero una consulta."
         wa_link = f"https://wa.me/{WA_NUMBER}?text={quote_plus(WA_TEXT)}"
+# ---- 📣 Redes (a la derecha)
+with tab_social:
+    if ENABLE_SOCIAL:
+        st.subheader("Conecta con Carmen")
 
         # Fila de iconos clicables
         c1, c2, c3 = st.columns(3)
