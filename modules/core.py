@@ -1,5 +1,5 @@
 # modules/core.py
-import os, io, re, hashlib
+import os, io, re
 from pathlib import Path
 from typing import Optional
 from datetime import date, datetime, timedelta, time
@@ -236,8 +236,6 @@ def registrar_paciente_admin(
 
     return pid
 
-
-
 def cambiar_password_paciente(paciente_id: int, pw_actual: str, pw_nueva6: str) -> None:
     """
     Cambia la contraseña de un paciente verificando la actual.
@@ -357,6 +355,50 @@ def _ensure_unique_name(drive, parent_id: str, name: str) -> str:
         cand = f"{base}-{i}{ext}"
         if cand not in existing: return cand
         i += 1
+
+def delete_paciente(pid: int, remove_drive_folder: bool = True, send_to_trash: bool = True) -> bool:
+    """
+    Elimina definitivamente al paciente `pid`.
+    - Borra en cascada mediciones y fotos (por FK).
+    - Deja las citas con paciente_id = NULL (por FK).
+    - Opcionalmente manda a papelera (o borra) la carpeta de Drive del paciente.
+    """
+    try:
+        # 1) Traer datos del paciente (para carpeta)
+        d = df_sql("SELECT nombre, drive_folder_id FROM pacientes WHERE id=%s LIMIT 1", (pid,))
+        if d.empty:
+            return False
+
+        folder_id = (d.loc[0, "drive_folder_id"] or "").strip()
+
+        # 2) Eliminar carpeta de Drive (opcional)
+        if remove_drive_folder and folder_id:
+            try:
+                drv = get_drive()
+                if send_to_trash:
+                    drv.files().update(
+                        fileId=folder_id,
+                        body={"trashed": True},
+                        supportsAllDrives=True
+                    ).execute()
+                else:
+                    drv.files().delete(fileId=folder_id, supportsAllDrives=True).execute()
+            except Exception as e:
+                # No bloquea el borrado en DB si falla Drive
+                st.info(f"[Drive] No se pudo eliminar/trash la carpeta del paciente: {e}")
+
+        # 3) Eliminar paciente (cascade hará el resto)
+        exec_sql("DELETE FROM pacientes WHERE id=%s", (pid,))
+
+        try:
+            st.cache_data.clear()
+        except Exception:
+            pass
+        return True
+    except Exception as e:
+        st.error(f"No se pudo eliminar el paciente: {e}")
+        return False
+
 
 def ensure_patient_folder(nombre: str, pid: int) -> str:
     drive = get_drive()

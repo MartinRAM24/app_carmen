@@ -12,6 +12,8 @@ import pandas as pd
 import re
 from modules.core import registrar_paciente_admin
 import random
+from modules.core import delete_paciente
+
 
 st.set_page_config(page_title="Carmen — Pacientes", page_icon="🧾", layout="wide")
 from modules.theme import apply_theme
@@ -318,6 +320,60 @@ with tab_fotos:
                             st.info("Operación cancelada")
                 _confirm_delete_dialog()
                 break
+
+st.divider()
+st.markdown("### ⚠️ Zona de peligro")
+
+col_del1, col_del2 = st.columns([1, 4])
+with col_del1:
+    if st.button("🗑️ Eliminar paciente", type="primary"):
+        st.session_state["_del_pid"] = pid
+
+# Modal de confirmación
+if st.session_state.get("_del_pid") == pid:
+    @st.dialog("Confirmar eliminación de paciente")
+    def _confirm_delete_patient():
+        datos_modal = df_sql("SELECT nombre FROM pacientes WHERE id=%s", (pid,))
+        nombre_actual = datos_modal.iloc[0]["nombre"] if not datos_modal.empty else "(desconocido)"
+
+        st.warning(
+            "Esta acción borrará mediciones y fotos en la base de datos. "
+            "Las citas permanecerán, pero sin asociarse al paciente (paciente_id = NULL)."
+        )
+        st.write(f"**Paciente:** {nombre_actual}")
+
+        colA, colB = st.columns(2)
+        with colA:
+            chk_drive = st.checkbox("Eliminar carpeta de Drive", value=True)
+        with colB:
+            chk_trash = st.checkbox("Enviar a Papelera (recomendado)", value=True)
+
+        confirm_text = st.text_input(
+            f'Escribe **ELIMINAR** para confirmar',
+            help="Escribe la palabra exacta para habilitar el botón."
+        )
+
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("Cancelar"):
+                st.session_state.pop("_del_pid", None)
+                st.info("Operación cancelada")
+
+        with c2:
+            disabled = (confirm_text.strip().upper() != "ELIMINAR")
+            if st.button("Sí, borrar", disabled=disabled):
+                ok = delete_paciente(pid, remove_drive_folder=chk_drive, send_to_trash=chk_trash)
+                st.session_state.pop("_del_pid", None)
+                if ok:
+                    st.success("Paciente eliminado ✅")
+                    # Limpia resultados y fuerza a buscar de nuevo
+                    st.session_state.pop("bus_pac_df", None)
+                    st.rerun()
+                else:
+                    st.error("No se pudo eliminar el paciente.")
+
+    _confirm_delete_patient()
+
 
 st.divider()
 
