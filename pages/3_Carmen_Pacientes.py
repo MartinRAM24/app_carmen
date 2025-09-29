@@ -4,9 +4,8 @@ from datetime import date
 from pathlib import Path                      # <- lo necesitas más abajo para PDFs
 from modules.core import (
     df_sql, exec_sql, upsert_medicion, asociar_medicion_a_cita,
-    upload_pdf_to_folder, upload_image_to_folder, enforce_patient_pdf_quota,
-    get_drive, ensure_cita_folder, drive_image_view_url, drive_image_download_url,
-    delete_foto, delete_medicion_dia,             # <- IMPORTANTE
+    upload_pdf_to_folder, upload_image_to_folder, enforce_patient_pdf_quota, ensure_cita_folder, drive_image_view_url, drive_image_download_url,
+    delete_foto, delete_medicion_dia, _siguiente_indice_foto, _purge_drive_files_with_prefix,             # <- IMPORTANTE
 )
 import pandas as pd
 import re
