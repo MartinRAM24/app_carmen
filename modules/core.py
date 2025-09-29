@@ -1,6 +1,5 @@
 # modules/core.py
 import os, io, re
-from pathlib import Path
 from typing import Optional
 from datetime import date, datetime, timedelta, time
 import pandas as pd
@@ -14,6 +13,9 @@ from googleapiclient.http import MediaIoBaseUpload
 from googleapiclient.errors import HttpError
 import requests
 import bcrypt
+import unicodedata
+from pathlib import Path
+from googleapiclient.errors import HttpError
 
 # --------- Secrets / env ---------
 NEON_URL = st.secrets.get("NEON_DATABASE_URL") or os.getenv("NEON_DATABASE_URL")
@@ -329,33 +331,6 @@ def drive_image_view_url(file_id: str) -> str:
 def drive_image_download_url(file_id: str) -> str:
     return f"https://drive.google.com/uc?export=download&id={file_id}"
 
-def _slugify(s: str) -> str:
-    s = s.strip().lower()
-    s = re.sub(r"[^\w\s.-]", "", s, flags=re.UNICODE)
-    s = re.sub(r"\s+", "_", s)
-    s = re.sub(r"_+", "_", s)
-    return s.strip("_")
-
-def _ext_of(filename: str, default_ext: str) -> str:
-    ext = Path(filename).suffix.lower()
-    return ext if ext else default_ext
-
-def _ensure_unique_name(drive, parent_id: str, name: str) -> str:
-    base, ext = Path(name).stem, Path(name).suffix
-    safe_base = base.replace("'", "\\'")
-    q = "trashed=false and " + f"'{parent_id}' in parents and " + f"name contains '{safe_base}'"
-    res = drive.files().list(
-        q=q, fields="files(name)", pageSize=100,
-        supportsAllDrives=True, includeItemsFromAllDrives=True,
-    ).execute()
-    existing = {f["name"] for f in res.get("files", [])}
-    if name not in existing: return name
-    i = 2
-    while True:
-        cand = f"{base}-{i}{ext}"
-        if cand not in existing: return cand
-        i += 1
-
 def delete_paciente(pid: int, remove_drive_folder: bool = True, send_to_trash: bool = True) -> bool:
     """
     Elimina definitivamente al paciente `pid`.
@@ -398,6 +373,90 @@ def delete_paciente(pid: int, remove_drive_folder: bool = True, send_to_trash: b
     except Exception as e:
         st.error(f"No se pudo eliminar el paciente: {e}")
         return False
+
+def _slug(s: str) -> str:
+    s = unicodedata.normalize('NFKD', s).encode('ascii', 'ignore').decode('ascii')
+    s = re.sub(r'[^\w\s.-]', '', s, flags=re.UNICODE).strip().lower()
+    s = re.sub(r'\s+', '_', s); s = re.sub(r'_+', '_', s)
+    return s.strip('_')
+
+def _escape_for_q(s: str) -> str:
+    # Escapa comillas simples para la query de Drive
+    return s.replace("'", "\\'")
+
+def _purge_drive_files_with_prefix(parent_id: str, name_prefix: str, send_to_trash: bool = True) -> None:
+    """
+    Mueve a papelera (o elimina) todos los archivos dentro de `parent_id`
+    cuyo nombre empieza con `name_prefix`.
+    """
+    try:
+        drv = get_drive()
+
+        # Para reducir resultados: buscamos por "contains" y luego filtramos por prefix en Python
+        q = (
+            f"'{_escape_for_q(parent_id)}' in parents and "
+            f"trashed=false and "
+            f"name contains '{_escape_for_q(name_prefix)}'"
+        )
+
+        page_token = None
+        to_purge = []
+        while True:
+            resp = drv.files().list(
+                q=q,
+                fields="nextPageToken, files(id, name)",
+                pageSize=1000,
+                pageToken=page_token,
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+            ).execute()
+            files = resp.get("files", [])
+            # Filtra solo los que empiezan exactamente con el prefijo
+            to_purge.extend([f for f in files if f.get("name","").startswith(name_prefix)])
+            page_token = resp.get("nextPageToken")
+            if not page_token:
+                break
+
+        for f in to_purge:
+            try:
+                if send_to_trash:
+                    drv.files().update(
+                        fileId=f["id"],
+                        body={"trashed": True},
+                        supportsAllDrives=True
+                    ).execute()
+                else:
+                    drv.files().delete(
+                        fileId=f["id"],
+                        supportsAllDrives=True
+                    ).execute()
+            except HttpError as e:
+                st.info(f"[Drive] No se pudo eliminar {f.get('name')}: {e}")
+
+    except Exception as e:
+        st.info(f"[Drive] Error purgando prefijo '{name_prefix}': {e}")
+
+    except Exception as e:
+        st.info(f"[Drive] No se pudo depurar '{name_prefix}*': {e}")
+
+def upload_pdf_named(pid: int, fecha_str: str, kind: str, file_bytes: bytes) -> dict:
+    kind = _slug(kind or "pdf")
+    folder_id = ensure_cita_folder(pid, fecha_str)
+    target = f"{fecha_str}_{kind}.pdf"
+    _purge_drive_files_with_prefix(folder_id, f"{fecha_str}_{kind}")
+    return upload_pdf_to_folder(file_bytes, target, folder_id)
+
+def upload_image_named(pid: int, fecha_str: str, base_name: str, file_bytes: bytes, mime: str) -> dict:
+    """
+    Sube imagen con nombre `YYYY-MM-DD_slug.ext` (conserva extensión).
+    No purga; permite múltiples fotos por fecha.
+    """
+    folder_id = ensure_cita_folder(pid, fecha_str)
+    slug = _slug(Path(base_name).stem or "foto")
+    ext = Path(base_name).suffix.lower() or ".jpg"
+    target = f"{fecha_str}_{slug}{ext}"
+    return upload_image_to_folder(file_bytes, target, folder_id, mime)
+
 
 
 def ensure_patient_folder(nombre: str, pid: int) -> str:

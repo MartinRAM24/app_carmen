@@ -204,42 +204,37 @@ with tab_pdfs:
     st.caption("Sube y consulta los PDFs de cada fecha (YYYY-MM-DD).")
     fecha_pdf = st.text_input("Fecha", value=str(date.today()), key=f"pdf_fecha_{pid}")
     c1, c2 = st.columns(2)
+
     with c1:
-        up_rutina = st.file_uploader("Rutina (PDF)", type=["pdf"])
-        if up_rutina and st.button("⬆️ Subir Rutina"):
+        up_rutina = st.file_uploader("Rutina (PDF)", type=["pdf"], key=f"up_rutina_{pid}")
+        if up_rutina and st.button("⬆️ Subir Rutina", key=f"btn_rutina_{pid}"):
             try:
-                cita_folder = ensure_cita_folder(pid, fecha_pdf.strip())
-                drive = get_drive()
-                ext = Path(up_rutina.name).suffix or ".pdf"
-                target = _safe = f"{fecha_pdf.strip()}_rutina{ext}"
-                # _ensure_unique_name está dentro del core; lo “simulamos” llamando por Drive directamente:
-                # pero más fácil: usamos nombre tal cual; si choca, Drive crea -2, etc.
-                pdf = upload_pdf_to_folder(up_rutina.read(), target, cita_folder)
+                pdf = upload_pdf_named(pid, fecha_pdf.strip(), "rutina", up_rutina.read())
                 upsert_medicion(pid, fecha_pdf.strip(), rutina_pdf=pdf["webViewLink"], plan_pdf=None)
-                # limitar a 10 PDFs
-                pf = df_sql("SELECT drive_folder_id FROM pacientes WHERE id=%s",(pid,))
-                if not pf.empty and (pf.loc[0,"drive_folder_id"] or "").strip():
-                    enforce_patient_pdf_quota(pf.loc[0,"drive_folder_id"].strip(), keep=10, send_to_trash=True)
+
+                pf = df_sql("SELECT drive_folder_id FROM pacientes WHERE id=%s", (pid,))
+                if not pf.empty and (pf.loc[0, "drive_folder_id"] or "").strip():
+                    enforce_patient_pdf_quota(pf.loc[0, "drive_folder_id"].strip(), keep=10, send_to_trash=True)
+
                 st.success("Rutina subida y enlazada ✅"); st.rerun()
             except Exception as e:
                 st.error(f"No se pudo subir: {e}")
+
     with c2:
-        up_plan = st.file_uploader("Plan (PDF)", type=["pdf"])
-        if up_plan and st.button("⬆️ Subir Plan"):
+        up_plan = st.file_uploader("Plan (PDF)", type=["pdf"], key=f"up_plan_{pid}")
+        if up_plan and st.button("⬆️ Subir Plan", key=f"btn_plan_{pid}"):
             try:
-                cita_folder = ensure_cita_folder(pid, fecha_pdf.strip())
-                drive = get_drive()
-                ext = Path(up_plan.name).suffix or ".pdf"
-                target = f"{fecha_pdf.strip()}_plan{ext}"
-                pdf = upload_pdf_to_folder(up_plan.read(), target, cita_folder)
+                pdf = upload_pdf_named(pid, fecha_pdf.strip(), "plan", up_plan.read())
                 upsert_medicion(pid, fecha_pdf.strip(), rutina_pdf=None, plan_pdf=pdf["webViewLink"])
-                pf = df_sql("SELECT drive_folder_id FROM pacientes WHERE id=%s",(pid,))
-                if not pf.empty and (pf.loc[0,"drive_folder_id"] or "").strip():
-                    from modules.core import enforce_patient_pdf_quota
-                    enforce_patient_pdf_quota(pf.loc[0,"drive_folder_id"].strip(), keep=10, send_to_trash=True)
+
+                pf = df_sql("SELECT drive_folder_id FROM pacientes WHERE id=%s", (pid,))
+                if not pf.empty and (pf.loc[0, "drive_folder_id"] or "").strip():
+                    enforce_patient_pdf_quota(pf.loc[0, "drive_folder_id"].strip(), keep=10, send_to_trash=True)
+
                 st.success("Plan subido y enlazado ✅"); st.rerun()
             except Exception as e:
                 st.error(f"No se pudo subir: {e}")
+
 
     st.divider()
     citas = df_sql("SELECT fecha, rutina_pdf, plan_pdf FROM mediciones WHERE paciente_id=%s ORDER BY fecha DESC", (pid,))
