@@ -670,7 +670,7 @@ def delete_medicion_dia(
 
 def citas_manana():
     """Citas de mañana (fecha = hoy + 1) con datos de paciente."""
-    return query_df(
+    return df_sql(
         """
         SELECT c.id AS id_cita, c.fecha, c.hora, c.nota,
                p.id AS paciente_id, p.nombre, p.telefono
