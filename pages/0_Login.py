@@ -100,19 +100,20 @@ with tab_pac:
                     st.error(f"No se pudo registrar: {e}")
 
 # Base64 de iconos (si ya tienes load_b64 arriba, esto va perfecto)
-        ig_b64 = load_b64("assets/ig.png")
-        ttk_b64 = load_b64("assets/tiktok.png")
-        wa_b64 = load_b64("assets/wa.png")
+ig_b64 = load_b64("assets/ig.png")
+ttk_b64 = load_b64("assets/tiktok.png")
+wa_b64 = load_b64("assets/wa.png")
 
-        # Links
-        IG_URL = "https://www.instagram.com/carmen._ochoa?igsh=dnd2aGt5a25xYTg0"
-        TTK_PROFILE_URL = "https://www.tiktok.com/@carmen_ochoa123?_t=ZS-907SiUuhJDw&_r=1"
-        TTK_VIDEO_ID = "7521784372152831240"
-        TTK_EMBED_URL = f"https://www.tiktok.com/embed/v2/{TTK_VIDEO_ID}"
+# Links
+IG_URL = "https://www.instagram.com/carmen._ochoa?igsh=dnd2aGt5a25xYTg0"
+TTK_PROFILE_URL = "https://www.tiktok.com/@carmen_ochoa123?_t=ZS-907SiUuhJDw&_r=1"
+TTK_VIDEO_ID = "7521784372152831240"
+TTK_EMBED_URL = f"https://www.tiktok.com/embed/v2/{TTK_VIDEO_ID}"
 
-        WA_NUMBER = "523511974405"  # 52 + número sin signos
-        WA_TEXT = "Hola Carmen, quiero una consulta."
-        wa_link = f"https://wa.me/{WA_NUMBER}?text={quote_plus(WA_TEXT)}"
+WA_NUMBER = "523511974405"  # 52 + número sin signos
+WA_TEXT = "Hola Carmen, quiero una consulta."
+wa_link = f"https://wa.me/{WA_NUMBER}?text={quote_plus(WA_TEXT)}"
+
 # ---- 📣 Redes (a la derecha)
 with tab_social:
     if ENABLE_SOCIAL:
