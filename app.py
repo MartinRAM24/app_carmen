@@ -119,7 +119,10 @@ if role == "paciente":
 elif role == "admin":
     nav = st.navigation({"Carmen": [car_hoy, car_pac, car_citas]})  # ← solo páginas de Carmen
 else:
-    nav = st.navigation([home])               # ← solo login
+    nav = st.navigation([home])   # ← solo login
+
+from modules.core import setup_db_safe
+setup_db_safe()
 
 nav.run()
 

@@ -156,7 +156,17 @@ def setup_db():
     );
     """)
 
-setup_db()
+def setup_db_safe():
+    try:
+        setup_db()
+    except Exception:
+        # fuerza reconexión y reintenta una vez
+        try:
+            st.cache_resource.clear()
+        except Exception:
+            pass
+        setup_db()
+
 
 # --------- AUTH ---------
 def is_admin_ok(user: str, password: str) -> bool:
