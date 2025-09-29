@@ -3,14 +3,12 @@ import streamlit as st
 from datetime import date
 from pathlib import Path                      # <- lo necesitas más abajo para PDFs
 from modules.core import (
-    df_sql, exec_sql, ensure_patient_folder, upsert_medicion, asociar_medicion_a_cita,
+    df_sql, exec_sql, upsert_medicion, asociar_medicion_a_cita,
     upload_pdf_to_folder, upload_image_to_folder, enforce_patient_pdf_quota,
     get_drive, ensure_cita_folder, drive_image_view_url, drive_image_download_url,
     delete_foto, delete_medicion_dia,
     upsert_paciente,             # <- IMPORTANTE
 )
-
-import re
 import pandas as pd
 
 st.set_page_config(page_title="Carmen — Pacientes", page_icon="🧾", layout="wide")
@@ -291,7 +289,6 @@ with tab_pdfs:
                 # limitar a 10 PDFs
                 pf = df_sql("SELECT drive_folder_id FROM pacientes WHERE id=%s",(pid,))
                 if not pf.empty and (pf.loc[0,"drive_folder_id"] or "").strip():
-                    from modules.core import enforce_patient_pdf_quota
                     enforce_patient_pdf_quota(pf.loc[0,"drive_folder_id"].strip(), keep=10, send_to_trash=True)
                 st.success("Rutina subida y enlazada ✅"); st.rerun()
             except Exception as e:
